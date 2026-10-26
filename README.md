@@ -11,21 +11,6 @@ A Lua UI library for Roblox with animated notifications, a draggable/resizable w
 
 This package includes small fixes to the source so the documented methods work as expected: the returned window exposes `CreateTab`, `ToggleUI`, and `DestroyGui`; `Toggle:Set()` keeps `Toggle.Value` synchronized; Paragraph updates recalculate text height; Input uses the configured title and description; and `Dropdown:AddOption()` keeps its `Options` array updated.
 
-## Publish to GitHub
-
-1. Create a repository and upload `Flur.lua` to the repository root.
-2. Commit the file to the `main` branch (or change the branch in the URL below).
-3. Open `LoaderExample.lua` and replace `YOUR_USERNAME` and `YOUR_REPOSITORY` in `LIBRARY_URL`.
-4. Run the loader in an environment that supports `game:HttpGet` and `loadstring`.
-
-The URL pattern used by the loader is:
-
-```text
-https://raw.githubusercontent.com/MCUpload123/Fluriore-library/refs/heads/main/Flur.lua
-```
-
-**Security note:** A loader executes the downloaded source as code. Review changes before publishing and before running a new version. Anyone who can change the raw file may change what gets executed by users of the loader.
-
 ## Quick start
 
 ```lua
