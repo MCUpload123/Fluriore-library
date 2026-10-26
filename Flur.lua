@@ -2,7 +2,8 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer = game:GetService("Players").LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
-local CoreGui = LocalPlayer.PlayerGui 
+local TextService = game:GetService("TextService")
+local CoreGui = LocalPlayer:WaitForChild("PlayerGui") 
 local function MakeDraggable(topbarobject, object)
 	local function CustomPos(topbarobject, object)
 		local Dragging = nil
@@ -13,8 +14,7 @@ local function MakeDraggable(topbarobject, object)
 		local function UpdatePos(input)
 			local Delta = input.Position - DragStart
 			local pos = UDim2.new(StartPosition.X.Scale, StartPosition.X.Offset + Delta.X, StartPosition.Y.Scale, StartPosition.Y.Offset + Delta.Y)
-			local Tween = TweenService:Create(object, TweenInfo.new(0.2), {Position = pos})
-			Tween:Play()
+			object.Position = pos
 		end
 
 		topbarobject.InputBegan:Connect(function(input)
@@ -48,12 +48,12 @@ local function MakeDraggable(topbarobject, object)
 		local DragInput = nil
 		local DragStart = nil
 		local StartSize = nil
-		local maxSizeX = object.Size.X.Offset
-		if maxSizeX < 400 then
-			maxSizeX = 400
-		end
-		local maxSizeY = maxSizeX - 100
-		object.Size = UDim2.new(0, maxSizeX, 0, maxSizeY)
+		local minSizeX = 320
+		local minSizeY = 240
+		object.Size = UDim2.new(
+			0, math.max(object.Size.X.Offset, minSizeX),
+			0, math.max(object.Size.Y.Offset, minSizeY)
+		)
 		local changesizeobject = Instance.new("Frame");
 
 		changesizeobject.AnchorPoint = Vector2.new(1, 1)
@@ -70,10 +70,9 @@ local function MakeDraggable(topbarobject, object)
 			local Delta = input.Position - DragStart
 			local newWidth = StartSize.X.Offset + Delta.X
 			local newHeight = StartSize.Y.Offset + Delta.Y
-			newWidth = math.max(newWidth, maxSizeX)
-			newHeight = math.max(newHeight, maxSizeY)
-			local Tween = TweenService:Create(object, TweenInfo.new(0.2), {Size = UDim2.new(0, newWidth, 0, newHeight)})
-			Tween:Play()
+			newWidth = math.max(newWidth, minSizeX)
+			newHeight = math.max(newHeight, minSizeY)
+			object.Size = UDim2.new(0, newWidth, 0, newHeight)
 		end
 
 		changesizeobject.InputBegan:Connect(function(input)
@@ -146,10 +145,9 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 	NotifyConfig.Description = NotifyConfig.Description or "Notification"
 	NotifyConfig.Content = NotifyConfig.Content or "Content"
 	NotifyConfig.Color = NotifyConfig.Color or Color3.fromRGB(255, 0, 255)
-	NotifyConfig.Time = NotifyConfig.Time or 0.5
-	NotifyConfig.Delay = NotifyConfig.Delay or 5
+	NotifyConfig.Time = math.max(0.05, tonumber(NotifyConfig.Time) or 0.5)
+	NotifyConfig.Delay = math.max(0, tonumber(NotifyConfig.Delay) or 5)
 	local NotifyFunction = {}
-	spawn(function()
 		if not CoreGui:FindFirstChild("NotifyGui") then
 			local NotifyGui = Instance.new("ScreenGui");
 			NotifyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -258,7 +256,9 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 		TextLabel.BackgroundTransparency = 0.9990000128746033
 		TextLabel.BorderColor3 = Color3.fromRGB(0, 0, 0)
 		TextLabel.BorderSizePixel = 0
-		TextLabel.Size = UDim2.new(1, 0, 1, 0)
+		local notifyTitleTextWidth = math.min(170, math.ceil(TextService:GetTextSize(tostring(NotifyConfig.Title), TextLabel.TextSize, TextLabel.Font, Vector2.new(1000, 30)).X))
+		TextLabel.Size = UDim2.new(0, notifyTitleTextWidth, 1, 0)
+		TextLabel.TextTruncate = Enum.TextTruncate.AtEnd
 		TextLabel.Parent = Top
 		TextLabel.Position = UDim2.new(0, 10, 0, 0)
 
@@ -278,8 +278,9 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 		TextLabel1.BackgroundTransparency = 0.9990000128746033
 		TextLabel1.BorderColor3 = Color3.fromRGB(0, 0, 0)
 		TextLabel1.BorderSizePixel = 0
-		TextLabel1.Size = UDim2.new(1, 0, 1, 0)
-		TextLabel1.Position = UDim2.new(0, TextLabel.TextBounds.X + 15, 0, 0)
+		TextLabel1.Size = UDim2.new(1, -(notifyTitleTextWidth + 50), 1, 0)
+		TextLabel1.Position = UDim2.new(0, notifyTitleTextWidth + 15, 0, 0)
+		TextLabel1.TextTruncate = Enum.TextTruncate.AtEnd
 		TextLabel1.Parent = Top
 
 		UIStroke1.Color = NotifyConfig.Color
@@ -323,15 +324,15 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 		TextLabel2.BorderSizePixel = 0
 		TextLabel2.Position = UDim2.new(0, 10, 0, 27)
 		TextLabel2.Parent = NotifyFrameReal
-		TextLabel2.Size = UDim2.new(1, -20, 0, 13)
-
-		TextLabel2.Size = UDim2.new(1, -20, 0, 13 + (13 * (TextLabel2.TextBounds.X // TextLabel2.AbsoluteSize.X)))
 		TextLabel2.TextWrapped = true
-
-		if TextLabel2.AbsoluteSize.Y < 27 then
+		local notifyTextWidth = 300
+		local notifyTextBounds = TextService:GetTextSize(tostring(NotifyConfig.Content), TextLabel2.TextSize, TextLabel2.Font, Vector2.new(notifyTextWidth, 10000))
+		local notifyContentHeight = math.max(13, math.ceil(notifyTextBounds.Y))
+		TextLabel2.Size = UDim2.new(1, -20, 0, notifyContentHeight)
+		if notifyContentHeight < 27 then
 			NotifyFrame.Size = UDim2.new(1, 0, 0, 65)
 		else
-			NotifyFrame.Size = UDim2.new(1, 0, 0, TextLabel2.AbsoluteSize.Y + 40)
+			NotifyFrame.Size = UDim2.new(1, 0, 0, notifyContentHeight + 40)
 		end
 		local waitbruh = false
 		function NotifyFunction:Close()
@@ -341,21 +342,22 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 			waitbruh = true
 			TweenService:Create(
 				NotifyFrameReal,
-				TweenInfo.new(tonumber(NotifyConfig.Time), Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
+				TweenInfo.new(NotifyConfig.Time, Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
 				{Position = UDim2.new(0, 400, 0, 0)}
 			):Play()
-			task.wait(tonumber(NotifyConfig.Time) / 1.2)
+			task.wait(NotifyConfig.Time / 1.2)
 			NotifyFrame:Destroy()
 		end
 		Close.Activated:Connect(function()
 			NotifyFunction:Close()
 		end)
-		TweenService:Create(
-			NotifyFrameReal,
-			TweenInfo.new(tonumber(NotifyConfig.Time), Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
-			{Position = UDim2.new(0, 0, 0, 0)}
-		):Play()
-		task.wait(tonumber(NotifyConfig.Delay))
+	TweenService:Create(
+		NotifyFrameReal,
+		TweenInfo.new(NotifyConfig.Time, Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
+		{Position = UDim2.new(0, 0, 0, 0)}
+	):Play()
+	task.spawn(function()
+		task.wait(NotifyConfig.Delay)
 		NotifyFunction:Close()
 	end)
 	return NotifyFunction
@@ -368,7 +370,121 @@ function FlurioreLib:MakeGui(GuiConfig)
 	GuiConfig["Logo Player"] = GuiConfig["Logo Player"] or "https://www.roblox.com/headshot-thumbnail/image?userId="..game:GetService("Players").LocalPlayer.UserId .."&width=420&height=420&format=png"
 	GuiConfig["Name Player"] = GuiConfig["Name Player"] or tostring(game:GetService("Players").LocalPlayer.Name)
 	GuiConfig["Tab Width"] = GuiConfig["Tab Width"] or 120
+
+	-- Theme support is API/config driven; no theme picker is added to the Settings panel.
+	local Theme = {
+		Accent = GuiConfig.Color,
+		Background = Color3.fromRGB(15, 15, 15),
+		Surface = Color3.fromRGB(255, 255, 255),
+		Text = Color3.fromRGB(235, 235, 235),
+		MutedText = Color3.fromRGB(160, 160, 160),
+		Border = Color3.fromRGB(50, 50, 50),
+	}
+	if type(GuiConfig.Theme) == "table" then
+		for key, value in pairs(GuiConfig.Theme) do
+			if Theme[key] ~= nil and typeof(value) == "Color3" then
+				Theme[key] = value
+			end
+		end
+	end
+	GuiConfig.Color = Theme.Accent
+	local lastAccent = GuiConfig.Color
+	local textScaleValue = math.clamp(tonumber(GuiConfig.TextScale) or 1, 0.7, 1.5)
+	local uiScaleValue = math.clamp(tonumber(GuiConfig.UIScale) or 0.9, 0.75, 1.2)
+	local textBaseSizes = setmetatable({}, {__mode = "k"})
 	local GuiFunc = {}
+
+	local function isTextObject(object)
+		return object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox")
+	end
+
+	local function registerTextObject(object)
+		if not isTextObject(object) then return end
+		if textBaseSizes[object] == nil then
+			textBaseSizes[object] = object.TextSize
+		end
+		object.TextSize = math.max(8, math.floor(textBaseSizes[object] * textScaleValue + 0.5))
+	end
+
+	-- Measure wrapped descriptions with TextService instead of dividing TextBounds by
+	-- AbsoluteSize (which can be zero during creation and clips text on mobile).
+	local function BindWrappedText(label, container, rightPadding, minimumTextHeight, minimumContainerHeight, bottomPadding, onResize)
+		local updating = false
+		local function update()
+			if updating or not label.Parent or not container.Parent then return end
+			local dynamicRightPadding = type(rightPadding) == "function" and rightPadding() or rightPadding
+			dynamicRightPadding = tonumber(dynamicRightPadding) or 10
+			local leftPadding = label.Position.X.Offset
+			local availableWidth = container.AbsoluteSize.X - leftPadding - dynamicRightPadding
+			if availableWidth < 24 then return end
+			updating = true
+			local measured = TextService:GetTextSize(tostring(label.Text or ""), label.TextSize, label.Font, Vector2.new(availableWidth, 10000))
+			local wantedTextHeight = math.max(minimumTextHeight or 12, math.ceil(measured.Y))
+			local wantedXOffset = -(leftPadding + dynamicRightPadding)
+			if label.Size.X.Scale ~= 1 or label.Size.X.Offset ~= wantedXOffset or label.Size.Y.Offset ~= wantedTextHeight then
+				label.Size = UDim2.new(1, wantedXOffset, 0, wantedTextHeight)
+			end
+			local wantedContainerHeight = math.max(minimumContainerHeight or 44, label.Position.Y.Offset + wantedTextHeight + (bottomPadding or 8))
+			local sizeChanged = container.Size.Y.Scale ~= 0 or container.Size.Y.Offset ~= wantedContainerHeight
+			if sizeChanged then
+				container.Size = UDim2.new(container.Size.X.Scale, container.Size.X.Offset, 0, wantedContainerHeight)
+			end
+			updating = false
+			if sizeChanged and onResize then task.defer(onResize) end
+		end
+		label.TextWrapped = true
+		label:GetPropertyChangedSignal("Text"):Connect(update)
+		label:GetPropertyChangedSignal("TextSize"):Connect(update)
+		container:GetPropertyChangedSignal("AbsoluteSize"):Connect(update)
+		task.defer(update)
+		return update
+	end
+
+	local surfaceNames = {
+		Section = true, Paragraph = true, Button = true, Toggle = true,
+		Slider = true, Input = true, Dropdown = true, Info = true,
+		SelectOptionsFrame = true,
+	}
+	local contentNameFragments = {"Content", "Description", "OptionSelecting"}
+	local function colorNearlyEqual(a, b)
+		return math.abs(a.R - b.R) < 0.012 and math.abs(a.G - b.G) < 0.012 and math.abs(a.B - b.B) < 0.012
+	end
+	local function applyThemeToObject(object)
+		if not object or not object.Parent then return end
+		local role = object:GetAttribute("FlurThemeRole")
+		if object:IsA("UIGradient") then
+			object.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Theme.Background),
+				ColorSequenceKeypoint.new(0.5, Theme.Accent),
+				ColorSequenceKeypoint.new(1, Theme.Background),
+			})
+		elseif object:IsA("UIStroke") then
+			if role == "Accent" or object.Color == lastAccent then
+				object.Color = Theme.Accent
+			elseif role == "Border" or object.Name == "UIStroke" then
+				object.Color = Theme.Border
+			end
+		elseif object:IsA("GuiObject") then
+			if object.BackgroundColor3 == lastAccent or role == "AccentBackground" then
+				object.BackgroundColor3 = Theme.Accent
+			elseif role == "Background" or object.Name == "Main" or object.Name == "SettingsPanel" then
+				object.BackgroundColor3 = Theme.Background
+			elseif role == "Surface" or surfaceNames[object.Name] then
+				object.BackgroundColor3 = Theme.Surface
+			end
+			if isTextObject(object) then
+				if object.TextColor3 == lastAccent or role == "AccentText" then
+					object.TextColor3 = Theme.Accent
+				elseif role == "MutedText" then
+					object.TextColor3 = Theme.MutedText
+				elseif role ~= "Text" and (string.find(object.Name, "Content", 1, true) or string.find(object.Name, "Description", 1, true) or object.Name == "OptionSelecting") then
+					object.TextColor3 = Theme.MutedText
+				elseif role == "Text" or colorNearlyEqual(object.TextColor3, Color3.fromRGB(230, 230, 230)) or colorNearlyEqual(object.TextColor3, Color3.fromRGB(235, 235, 235)) or colorNearlyEqual(object.TextColor3, Color3.fromRGB(255, 255, 255)) then
+					object.TextColor3 = Theme.Text
+				end
+			end
+		end
+	end
 
 	local HirimiGui = Instance.new("ScreenGui");
 	local DropShadowHolder = Instance.new("Frame");
@@ -400,7 +516,21 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 	HirimiGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	HirimiGui.Name = "HirimiGui"
+	HirimiGui.ResetOnSpawn = false
 	HirimiGui.Parent = CoreGui
+
+	local UIScaleObject = Instance.new("UIScale")
+	UIScaleObject.Name = "FlurioreUIScale"
+	UIScaleObject.Scale = uiScaleValue
+	UIScaleObject.Parent = DropShadowHolder
+
+	HirimiGui.DescendantAdded:Connect(function(object)
+		task.defer(function()
+			if not object.Parent then return end
+			registerTextObject(object)
+			applyThemeToObject(object)
+		end)
+	end)
 
 	DropShadowHolder.BackgroundTransparency = 1
 	DropShadowHolder.BorderSizePixel = 0
@@ -409,7 +539,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 	DropShadowHolder.Name = "DropShadowHolder"
 	DropShadowHolder.Parent = HirimiGui
 	
-  DropShadowHolder.Position = UDim2.new(0, (HirimiGui.AbsoluteSize.X // 2 - DropShadowHolder.Size.X.Offset // 2), 0, (HirimiGui.AbsoluteSize.Y // 2 - DropShadowHolder.Size.Y.Offset // 2))
+	local InitialViewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600)
+	DropShadowHolder.Position = UDim2.new(0, math.max(0, (InitialViewport.X - DropShadowHolder.Size.X.Offset) / 2), 0, math.max(0, (InitialViewport.Y - DropShadowHolder.Size.Y.Offset) / 2))
 	DropShadow.Image = "rbxassetid://6015897843"
 	DropShadow.ImageColor3 = Color3.fromRGB(15, 15, 15)
 	DropShadow.ImageTransparency = 0.5
@@ -429,6 +560,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	Main.BackgroundTransparency = 0.1
 	Main.BorderColor3 = Color3.fromRGB(0, 0, 0)
 	Main.BorderSizePixel = 0
+	Main.ClipsDescendants = true
 	Main.Position = UDim2.new(0.5, 0, 0.5, 0)
 	Main.Size = UDim2.new(1, -47, 1, -47)
 	Main.Name = "Main"
@@ -445,6 +577,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	Top.BorderColor3 = Color3.fromRGB(0, 0, 0)
 	Top.BorderSizePixel = 0
 	Top.Size = UDim2.new(1, 0, 0, 38)
+	Top.ZIndex = 10
 	Top.Name = "Top"
 	Top.Parent = Main
 
@@ -457,7 +590,9 @@ function FlurioreLib:MakeGui(GuiConfig)
 	TextLabel.BackgroundTransparency = 0.9990000128746033
 	TextLabel.BorderColor3 = Color3.fromRGB(0, 0, 0)
 	TextLabel.BorderSizePixel = 0
-	TextLabel.Size = UDim2.new(1, -100, 1, 0)
+	local headerTitleTextWidth = math.min(160, math.ceil(TextService:GetTextSize(tostring(GuiConfig.NameHub), TextLabel.TextSize, TextLabel.Font, Vector2.new(1000, 30)).X))
+	TextLabel.Size = UDim2.new(0, headerTitleTextWidth, 1, 0)
+	TextLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	TextLabel.Position = UDim2.new(0, 10, 0, 0)
 	TextLabel.Parent = Top
 
@@ -472,8 +607,10 @@ function FlurioreLib:MakeGui(GuiConfig)
 	TextLabel1.BackgroundTransparency = 0.9990000128746033
 	TextLabel1.BorderColor3 = Color3.fromRGB(0, 0, 0)
 	TextLabel1.BorderSizePixel = 0
-	TextLabel1.Size = UDim2.new(1, -(TextLabel.TextBounds.X + 104), 1, 0)
-	TextLabel1.Position = UDim2.new(0, TextLabel.TextBounds.X + 15, 0, 0)
+	local headerDescriptionTextWidth = math.ceil(TextService:GetTextSize(tostring(GuiConfig.Description), TextLabel1.TextSize, TextLabel1.Font, Vector2.new(1000, 30)).X)
+	TextLabel1.Size = UDim2.new(1, -(headerTitleTextWidth + 160), 1, 0)
+	TextLabel1.TextTruncate = Enum.TextTruncate.AtEnd
+	TextLabel1.Position = UDim2.new(0, headerTitleTextWidth + 15, 0, 0)
 	TextLabel1.Parent = Top
 
 	UIStroke1.Color = GuiConfig.Color
@@ -553,6 +690,103 @@ function FlurioreLib:MakeGui(GuiConfig)
 	ImageLabel2.Size = UDim2.new(1, -9, 1, -9)
 	ImageLabel2.Parent = Min
 
+	local IsMinimized = false
+	local SetMinimized
+	local SettingsButton = Instance.new("TextButton")
+	SettingsButton.Name = "SettingsButton"
+	SettingsButton:SetAttribute("FlurThemeRole", "Text")
+	SettingsButton.AnchorPoint = Vector2.new(1, 0.5)
+	SettingsButton.Position = UDim2.new(1, -112, 0.5, 0)
+	SettingsButton.Size = UDim2.new(0, 25, 0, 25)
+	SettingsButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	SettingsButton.BackgroundTransparency = 0.999
+	SettingsButton.BorderSizePixel = 0
+	SettingsButton.Text = "⚙"
+	SettingsButton.Font = Enum.Font.GothamBold
+	SettingsButton.TextSize = 16
+	SettingsButton.TextColor3 = Color3.fromRGB(235, 235, 235)
+	SettingsButton.AutoButtonColor = false
+	SettingsButton.ZIndex = 21
+	SettingsButton.Parent = Top
+
+	local SettingsPanel = Instance.new("Frame")
+	SettingsPanel.Name = "SettingsPanel"
+	SettingsPanel:SetAttribute("FlurThemeRole", "Background")
+	SettingsPanel.AnchorPoint = Vector2.new(1, 0)
+	SettingsPanel.Position = UDim2.new(1, -8, 0, 44)
+	SettingsPanel.Size = UDim2.new(0, 230, 0, 132)
+	SettingsPanel.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+	SettingsPanel.BackgroundTransparency = 0.04
+	SettingsPanel.BorderSizePixel = 0
+	SettingsPanel.Visible = false
+	SettingsPanel.ZIndex = 20
+	SettingsPanel.Parent = Main
+	local SettingsCorner = Instance.new("UICorner")
+	SettingsCorner.CornerRadius = UDim.new(0, 7)
+	SettingsCorner.Parent = SettingsPanel
+	local SettingsStroke = Instance.new("UIStroke")
+	SettingsStroke.Color = Theme.Border
+	SettingsStroke.Thickness = 1
+	SettingsStroke.Parent = SettingsPanel
+
+	local function makeSettingsLabel(name, text, position, size, textSize, alignment)
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label:SetAttribute("FlurThemeRole", "Text")
+		label.Text = text
+		label.Position = position
+		label.Size = size
+		label.BackgroundTransparency = 1
+		label.BorderSizePixel = 0
+		label.Font = Enum.Font.Gotham
+		label.TextSize = textSize or 11
+		label.TextColor3 = Theme.Text
+		label.TextXAlignment = alignment or Enum.TextXAlignment.Left
+		label.ZIndex = 21
+		label.Parent = SettingsPanel
+		return label
+	end
+	local function makeSettingsButton(name, text, position, size)
+		local button = Instance.new("TextButton")
+		button.Name = name
+		button:SetAttribute("FlurThemeRole", "Surface")
+		button.Text = text
+		button.Position = position
+		button.Size = size
+		button.BackgroundColor3 = Theme.Surface
+		button.BackgroundTransparency = 0.86
+		button.BorderSizePixel = 0
+		button.Font = Enum.Font.GothamBold
+		button.TextSize = 12
+		button.TextColor3 = Theme.Text
+		button.AutoButtonColor = true
+		button.ZIndex = 21
+		button.Parent = SettingsPanel
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 4)
+		corner.Parent = button
+		return button
+	end
+	makeSettingsLabel("SettingsTitle", "Display settings", UDim2.new(0, 10, 0, 7), UDim2.new(1, -20, 0, 18), 12)
+	local TextScaleLabel = makeSettingsLabel("TextScaleLabel", "Text size: 100%", UDim2.new(0, 10, 0, 33), UDim2.new(0, 96, 0, 20), 11)
+	local TextScaleMinus = makeSettingsButton("TextScaleMinus", "−", UDim2.new(0, 111, 0, 30), UDim2.new(0, 22, 0, 23))
+	local TextScaleValueLabel = makeSettingsLabel("TextScaleValueLabel", "100%", UDim2.new(0, 137, 0, 32), UDim2.new(0, 48, 0, 20), 11, Enum.TextXAlignment.Center)
+	local TextScalePlus = makeSettingsButton("TextScalePlus", "+", UDim2.new(0, 190, 0, 30), UDim2.new(0, 22, 0, 23))
+	local UIScaleLabel = makeSettingsLabel("UIScaleLabel", "UI size", UDim2.new(0, 10, 0, 63), UDim2.new(0, 96, 0, 20), 11)
+	local UIScaleMinus = makeSettingsButton("UIScaleMinus", "−", UDim2.new(0, 111, 0, 60), UDim2.new(0, 22, 0, 23))
+	local UIScaleValueLabel = makeSettingsLabel("UIScaleValueLabel", "90%", UDim2.new(0, 137, 0, 62), UDim2.new(0, 48, 0, 20), 11, Enum.TextXAlignment.Center)
+	local UIScalePlus = makeSettingsButton("UIScalePlus", "+", UDim2.new(0, 190, 0, 60), UDim2.new(0, 22, 0, 23))
+	local ResetSettingsButton = makeSettingsButton("ResetSettingsButton", "Reset", UDim2.new(1, -72, 1, -31), UDim2.new(0, 62, 0, 23))
+	SettingsButton.Activated:Connect(function()
+		if IsMinimized and SetMinimized then
+			SetMinimized(false)
+		end
+		SettingsPanel.Visible = not SettingsPanel.Visible
+		if SettingsPanel.Visible then
+			TweenService:Create(SettingsPanel, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.04}):Play()
+		end
+	end)
+
 	LayersTab.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	LayersTab.BackgroundTransparency = 0.9990000128746033
 	LayersTab.BorderColor3 = Color3.fromRGB(0, 0, 0)
@@ -590,7 +824,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	NameTab.Font = Enum.Font.GothamBold
 	NameTab.Text = ""
 	NameTab.TextColor3 = Color3.fromRGB(255, 255, 255)
-	NameTab.TextSize = 24
+	NameTab.TextSize = 18
 	NameTab.TextWrapped = true
 	NameTab.TextXAlignment = Enum.TextXAlignment.Left
 	NameTab.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -704,7 +938,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	NamePlayer.Font = Enum.Font.GothamBold
 	NamePlayer.Text = GuiConfig["Name Player"]
 	NamePlayer.TextColor3 = Color3.fromRGB(230.00000149011612, 230.00000149011612, 230.00000149011612)
-	NamePlayer.TextSize = 12
+	NamePlayer.TextSize = 10
 	NamePlayer.TextWrapped = true
 	NamePlayer.TextXAlignment = Enum.TextXAlignment.Left
 	NamePlayer.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -717,12 +951,95 @@ function FlurioreLib:MakeGui(GuiConfig)
 	NamePlayer.Parent = Info
 
 	function GuiFunc:DestroyGui()
-		if CoreGui:FindFirstChild("HirimiGui") then 
+		if HirimiGui and HirimiGui.Parent then
 			HirimiGui:Destroy()
 		end
 	end
+
 	local OldPos = DropShadowHolder.Position
 	local OldSize = DropShadowHolder.Size
+	local expandedSize = DropShadowHolder.Size
+	local LayersTabExpandedPosition = LayersTab.Position
+	local LayersExpandedPosition = Layers.Position
+	local TextScaleMin, TextScaleMax = 0.7, 1.5
+	local UIScaleMin, UIScaleMax = 0.75, 1.2
+
+	local function refreshTextScale()
+		for _, object in ipairs(HirimiGui:GetDescendants()) do
+			if isTextObject(object) then
+				if textBaseSizes[object] == nil then
+					textBaseSizes[object] = object.TextSize / math.max(textScaleValue, 0.01)
+				end
+				object.TextSize = math.max(8, math.floor(textBaseSizes[object] * textScaleValue + 0.5))
+			end
+		end
+		TextScaleValueLabel.Text = tostring(math.floor(textScaleValue * 100 + 0.5)) .. "%"
+	end
+
+	local function refreshScaleLabels()
+		TextScaleValueLabel.Text = tostring(math.floor(textScaleValue * 100 + 0.5)) .. "%"
+		TextScaleLabel.Text = "Text size"
+		UIScaleValueLabel.Text = tostring(math.floor(uiScaleValue * 100 + 0.5)) .. "%"
+	end
+
+	function GuiFunc:SetTextScale(value)
+		local nextValue = tonumber(value)
+		if not nextValue then return false end
+		textScaleValue = math.clamp(nextValue, TextScaleMin, TextScaleMax)
+		refreshTextScale()
+		refreshScaleLabels()
+		return true
+	end
+
+	function GuiFunc:SetUIScale(value)
+		local nextValue = tonumber(value)
+		if not nextValue then return false end
+		uiScaleValue = math.clamp(nextValue, UIScaleMin, UIScaleMax)
+		UIScaleObject.Scale = uiScaleValue
+		refreshScaleLabels()
+		return true
+	end
+
+	function GuiFunc:SetTheme(ThemeConfig)
+		if type(ThemeConfig) ~= "table" then return false end
+		-- Keep lastAccent unchanged while applying so existing objects using the old
+		-- accent can be detected and replaced with the new palette color.
+		for key, value in pairs(ThemeConfig) do
+			if Theme[key] ~= nil and typeof(value) == "Color3" then
+				Theme[key] = value
+			end
+		end
+		GuiConfig.Color = Theme.Accent
+		for _, object in ipairs(HirimiGui:GetDescendants()) do
+			applyThemeToObject(object)
+		end
+		lastAccent = Theme.Accent
+		SettingsStroke.Color = Theme.Border
+		return true
+	end
+
+	SetMinimized = function(minimized)
+		if IsMinimized == minimized then return end
+		IsMinimized = minimized
+		if minimized then
+			expandedSize = DropShadowHolder.Size
+			SettingsPanel.Visible = false
+			TweenService:Create(DropShadowHolder, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+				Size = UDim2.new(expandedSize.X.Scale, expandedSize.X.Offset, 0, 38)
+			}):Play()
+			TweenService:Create(LayersTab, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+				Position = UDim2.new(LayersTabExpandedPosition.X.Scale, LayersTabExpandedPosition.X.Offset, LayersTabExpandedPosition.Y.Scale, LayersTabExpandedPosition.Y.Offset - 350)
+			}):Play()
+			TweenService:Create(Layers, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+				Position = UDim2.new(LayersExpandedPosition.X.Scale, LayersExpandedPosition.X.Offset, LayersExpandedPosition.Y.Scale, LayersExpandedPosition.Y.Offset - 350)
+			}):Play()
+		else
+			TweenService:Create(DropShadowHolder, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Size = expandedSize}):Play()
+			TweenService:Create(LayersTab, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Position = LayersTabExpandedPosition}):Play()
+			TweenService:Create(Layers, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Position = LayersExpandedPosition}):Play()
+		end
+	end
+
 	MaxRestore.Activated:Connect(function()
 		CircleClick(MaxRestore, Mouse.X, Mouse.Y)
 		if ImageLabel.Image == "rbxassetid://9886659406" then
@@ -731,34 +1048,59 @@ function FlurioreLib:MakeGui(GuiConfig)
 			OldSize = DropShadowHolder.Size
 			TweenService:Create(DropShadowHolder, TweenInfo.new(0.3), {Position = UDim2.new(0, 0, 0, 0)}):Play()
 			TweenService:Create(DropShadowHolder, TweenInfo.new(0.3), {Size = UDim2.new(1, 0, 1, 0)}):Play()
+			expandedSize = UDim2.new(1, 0, 1, 0)
 		else
 			ImageLabel.Image = "rbxassetid://9886659406"
 			TweenService:Create(DropShadowHolder, TweenInfo.new(0.3), {Position = OldPos}):Play()
 			TweenService:Create(DropShadowHolder, TweenInfo.new(0.3), {Size = OldSize}):Play()
+			expandedSize = OldSize
 		end
 	end)
 	Min.Activated:Connect(function()
 		CircleClick(Min, Mouse.X, Mouse.Y)
-		DropShadowHolder.Visible = false
+		SetMinimized(not IsMinimized)
 	end)
 	Close.Activated:Connect(function()
 		CircleClick(Close, Mouse.X, Mouse.Y)
+		SettingsPanel.Visible = false
 		DropShadowHolder.Visible = false
 	end)
 	function GuiFunc:ToggleUI()
 		DropShadowHolder.Visible = not DropShadowHolder.Visible
+		return DropShadowHolder.Visible
 	end
-	UserInputService.InputBegan:Connect(function(input)
-		if input.KeyCode == Enum.KeyCode.RightShift then
-			if DropShadowHolder.Visible then
-				DropShadowHolder.Visible = false
-			else
-				DropShadowHolder.Visible = true
-			end
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
+			DropShadowHolder.Visible = not DropShadowHolder.Visible
 		end
 	end)
-	DropShadowHolder.Size = UDim2.new(0, 115 + TextLabel.TextBounds.X + 1 + TextLabel1.TextBounds.X, 0, 350)
+
+	TextScaleMinus.Activated:Connect(function() GuiFunc:SetTextScale(textScaleValue - 0.1) end)
+	TextScalePlus.Activated:Connect(function() GuiFunc:SetTextScale(textScaleValue + 0.1) end)
+	UIScaleMinus.Activated:Connect(function() GuiFunc:SetUIScale(uiScaleValue - 0.05) end)
+	UIScalePlus.Activated:Connect(function() GuiFunc:SetUIScale(uiScaleValue + 0.05) end)
+	ResetSettingsButton.Activated:Connect(function()
+		GuiFunc:SetTextScale(1)
+		GuiFunc:SetUIScale(0.9)
+	end)
+	refreshScaleLabels()
+
+	local CurrentViewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600)
+	local DesiredWidth = math.max(360, 150 + headerTitleTextWidth + headerDescriptionTextWidth)
+	DesiredWidth = math.min(DesiredWidth, math.max(320, CurrentViewport.X - 24))
+	DropShadowHolder.Size = UDim2.new(0, DesiredWidth, 0, 350)
+	DropShadowHolder.Position = UDim2.new(0, math.max(0, (CurrentViewport.X - DesiredWidth) / 2), 0, math.max(0, (CurrentViewport.Y - 350) / 2))
+	OldPos = DropShadowHolder.Position
 	MakeDraggable(Top, DropShadowHolder)
+	OldPos = DropShadowHolder.Position
+	OldSize = DropShadowHolder.Size
+	expandedSize = DropShadowHolder.Size
+
+	-- Apply the current palette to the window itself; future descendants are themed as they are created.
+	for _, object in ipairs(HirimiGui:GetDescendants()) do
+		applyThemeToObject(object)
+		registerTextObject(object)
+	end
 	--// Blur
 	local MoreBlur = Instance.new("Frame");
 	local DropShadowHolder1 = Instance.new("Frame");
@@ -1253,29 +1595,15 @@ function FlurioreLib:MakeGui(GuiConfig)
 				ParagraphContent.Name = "ParagraphContent"
 				ParagraphContent.Parent = Paragraph
 
-				ParagraphContent.Size = UDim2.new(1, -16, 0, 12 + (12 * (ParagraphContent.TextBounds.X // ParagraphContent.AbsoluteSize.X)))
-				ParagraphContent.TextWrapped = true
-				Paragraph.Size = UDim2.new(1, 0, 0, ParagraphContent.AbsoluteSize.Y + 33)
-
-				ParagraphContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-					ParagraphContent.TextWrapped = false
-					ParagraphContent.Size = UDim2.new(1, -16, 0, 12 + (12 * (ParagraphContent.TextBounds.X // ParagraphContent.AbsoluteSize.X)))
-					Paragraph.Size = UDim2.new(1, 0, 0, ParagraphContent.AbsoluteSize.Y + 33)
-					ParagraphContent.TextWrapped = true
-					UpdateSizeSection()
-				end)
+				local refreshParagraphHeight = BindWrappedText(ParagraphContent, Paragraph, 10, 12, 44, 9, UpdateSizeSection)
 
 				function ParagraphFunc:Set(ParagraphConfig)
-					local ParagraphConfig = ParagraphConfig or {}
+					ParagraphConfig = ParagraphConfig or {}
 					ParagraphConfig.Title = ParagraphConfig.Title or "Title"
 					ParagraphConfig.Content = ParagraphConfig.Content or "Content"
-
-					ParagraphTitle.Text = ParagraphConfig.Title
-					ParagraphContent.Text = ParagraphConfig.Content
-					ParagraphContent.TextWrapped = false
-					ParagraphContent.Size = UDim2.new(1, -16, 0, 12 + (12 * (ParagraphContent.TextBounds.X // ParagraphContent.AbsoluteSize.X)))
-					ParagraphContent.TextWrapped = true
-					Paragraph.Size = UDim2.new(1, 0, 0, ParagraphContent.AbsoluteSize.Y + 33)
+					ParagraphTitle.Text = tostring(ParagraphConfig.Title)
+					ParagraphContent.Text = tostring(ParagraphConfig.Content)
+					refreshParagraphHeight()
 				end
 				CountItem = CountItem + 1
 				return ParagraphFunc
@@ -1319,7 +1647,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 				ButtonTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				ButtonTitle.BorderSizePixel = 0
 				ButtonTitle.Position = UDim2.new(0, 10, 0, 10)
-				ButtonTitle.Size = UDim2.new(1, -100, 0, 13)
+				ButtonTitle.Size = UDim2.new(1, -65, 0, 13)
 				ButtonTitle.Name = "ButtonTitle"
 				ButtonTitle.Parent = Button
 
@@ -1337,19 +1665,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 				ButtonContent.Position = UDim2.new(0, 10, 0, 23)
 				ButtonContent.Name = "ButtonContent"
 				ButtonContent.Parent = Button
-				ButtonContent.Size = UDim2.new(1, -100, 0, 12)
-
-				ButtonContent.Size = UDim2.new(1, -100, 0, 12 + (12 * (ButtonContent.TextBounds.X // ButtonContent.AbsoluteSize.X)))
-				ButtonContent.TextWrapped = true
-				Button.Size = UDim2.new(1, 0, 0, ButtonContent.AbsoluteSize.Y + 33)
-
-				ButtonContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-					ButtonContent.TextWrapped = false
-					ButtonContent.Size = UDim2.new(1, -100, 0, 12 + (12 * (ButtonContent.TextBounds.X // ButtonContent.AbsoluteSize.X)))
-					Button.Size = UDim2.new(1, 0, 0, ButtonContent.AbsoluteSize.Y + 33)
-					ButtonContent.TextWrapped = true
-					UpdateSizeSection()
-				end)
+				ButtonContent.Size = UDim2.new(1, -65, 0, 12)
+				local refreshButtonHeight = BindWrappedText(ButtonContent, Button, 55, 12, 44, 9, UpdateSizeSection)
 
 				ButtonButton.Font = Enum.Font.SourceSans
 				ButtonButton.Text = ""
@@ -1437,7 +1754,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 				ToggleTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				ToggleTitle.BorderSizePixel = 0
 				ToggleTitle.Position = UDim2.new(0, 10, 0, 10)
-				ToggleTitle.Size = UDim2.new(1, -100, 0, 13)
+				ToggleTitle.Size = UDim2.new(1, -82, 0, 13)
 				ToggleTitle.Name = "ToggleTitle"
 				ToggleTitle.Parent = Toggle
 
@@ -1453,21 +1770,10 @@ function FlurioreLib:MakeGui(GuiConfig)
 				ToggleContent.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				ToggleContent.BorderSizePixel = 0
 				ToggleContent.Position = UDim2.new(0, 10, 0, 23)
-				ToggleContent.Size = UDim2.new(1, -100, 0, 12)
+				ToggleContent.Size = UDim2.new(1, -82, 0, 12)
 				ToggleContent.Name = "ToggleContent"
 				ToggleContent.Parent = Toggle
-				
-				ToggleContent.Size = UDim2.new(1, -100, 0, 12 + (12 * (ToggleContent.TextBounds.X // ToggleContent.AbsoluteSize.X)))
-				ToggleContent.TextWrapped = true
-				Toggle.Size = UDim2.new(1, 0, 0, ToggleContent.AbsoluteSize.Y + 33)
-
-				ToggleContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-					ToggleContent.TextWrapped = false
-					ToggleContent.Size = UDim2.new(1, -100, 0, 12 + (12 * (ToggleContent.TextBounds.X // ToggleContent.AbsoluteSize.X)))
-					Toggle.Size = UDim2.new(1, 0, 0, ToggleContent.AbsoluteSize.Y + 33)
-					ToggleContent.TextWrapped = true
-					UpdateSizeSection()
-				end)
+				local refreshToggleHeight = BindWrappedText(ToggleContent, Toggle, 72, 12, 44, 9, UpdateSizeSection)
 
 				ToggleButton.Font = Enum.Font.SourceSans
 				ToggleButton.Text = ""
@@ -1515,7 +1821,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 					ToggleFunc:Set(ToggleFunc.Value)
 				end)
 				function ToggleFunc:Set(Value)
-					ToggleFunc.Value = Value
+					ToggleFunc.Value = not not Value
+					Value = ToggleFunc.Value
 					ToggleConfig.Callback(Value)
 					if Value then
 						TweenService:Create(
@@ -1566,202 +1873,245 @@ function FlurioreLib:MakeGui(GuiConfig)
 				return ToggleFunc
 			end
 			function Items:AddSlider(SliderConfig)
-				local SliderConfig = SliderConfig or {}
+				SliderConfig = SliderConfig or {}
 				SliderConfig.Title = SliderConfig.Title or "Slider"
 				SliderConfig.Content = SliderConfig.Content or "Content"
-				SliderConfig.Increment = SliderConfig.Increment or 1
-				SliderConfig.Min = SliderConfig.Min or 0
-				SliderConfig.Max = SliderConfig.Max or 100
-				SliderConfig.Default = SliderConfig.Default or 50
+				SliderConfig.Increment = tonumber(SliderConfig.Increment) or 1
+				if SliderConfig.Increment <= 0 then SliderConfig.Increment = 1 end
+				SliderConfig.Min = tonumber(SliderConfig.Min) or 0
+				SliderConfig.Max = tonumber(SliderConfig.Max) or 100
+				if SliderConfig.Max < SliderConfig.Min then
+					SliderConfig.Min, SliderConfig.Max = SliderConfig.Max, SliderConfig.Min
+				end
+				if SliderConfig.Default == nil then SliderConfig.Default = 50 end
+				SliderConfig.Default = tonumber(SliderConfig.Default) or SliderConfig.Min
 				SliderConfig.Callback = SliderConfig.Callback or function() end
-				local SliderFunc = {Value = SliderConfig.Default}
-	
-				local Slider = Instance.new("Frame");
-				local UICorner15 = Instance.new("UICorner");
-				local SliderTitle = Instance.new("TextLabel");
-				local SliderContent = Instance.new("TextLabel");
-				local SliderInput = Instance.new("Frame");
-				local UICorner16 = Instance.new("UICorner");
-				local TextBox = Instance.new("TextBox");
-				local SliderFrame = Instance.new("Frame");
-				local UICorner17 = Instance.new("UICorner");
-				local SliderDraggable = Instance.new("Frame");
-				local UICorner18 = Instance.new("UICorner");
-				local UIStroke5 = Instance.new("UIStroke");
-				local SliderCircle = Instance.new("Frame");
-				local UICorner19 = Instance.new("UICorner");
-				local UIStroke6 = Instance.new("UIStroke");
-				local UIStroke7 = Instance.new("UIStroke");
+				local SliderFunc = {Value = SliderConfig.Min}
 
-				Slider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-				Slider.BackgroundTransparency = 0.9350000023841858
-				Slider.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				local Slider = Instance.new("Frame")
+				local UICorner15 = Instance.new("UICorner")
+				local SliderTitle = Instance.new("TextLabel")
+				local SliderContent = Instance.new("TextLabel")
+				local SliderInput = Instance.new("Frame")
+				local UICorner16 = Instance.new("UICorner")
+				local TextBox = Instance.new("TextBox")
+				local SliderFrame = Instance.new("Frame")
+				local UICorner17 = Instance.new("UICorner")
+				local SliderDraggable = Instance.new("Frame")
+				local UICorner18 = Instance.new("UICorner")
+				local SliderCircle = Instance.new("Frame")
+				local UICorner19 = Instance.new("UICorner")
+				local UIStroke6 = Instance.new("UIStroke")
+
+				Slider.BackgroundColor3 = Theme.Surface
+				Slider.BackgroundTransparency = 0.935
 				Slider.BorderSizePixel = 0
 				Slider.LayoutOrder = CountItem
-				Slider.Size = UDim2.new(1, 0, 0, 46)
+				Slider.Size = UDim2.new(1, 0, 0, 68)
 				Slider.Name = "Slider"
 				Slider.Parent = SectionAdd
-
 				UICorner15.CornerRadius = UDim.new(0, 4)
 				UICorner15.Parent = Slider
 
 				SliderTitle.Font = Enum.Font.GothamBold
-				SliderTitle.Text = SliderConfig.Title
-				SliderTitle.TextColor3 = Color3.fromRGB(230.77499270439148, 230.77499270439148, 230.77499270439148)
-				SliderTitle.TextSize = 13
+				SliderTitle.Text = tostring(SliderConfig.Title)
+				SliderTitle.TextColor3 = Theme.Text
+				SliderTitle.TextSize = 12
 				SliderTitle.TextXAlignment = Enum.TextXAlignment.Left
 				SliderTitle.TextYAlignment = Enum.TextYAlignment.Top
-				SliderTitle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-				SliderTitle.BackgroundTransparency = 0.9990000128746033
-				SliderTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				SliderTitle.BackgroundTransparency = 1
 				SliderTitle.BorderSizePixel = 0
-				SliderTitle.Position = UDim2.new(0, 10, 0, 10)
-				SliderTitle.Size = UDim2.new(1, -180, 0, 13)
+				SliderTitle.Position = UDim2.new(0, 9, 0, 7)
+				SliderTitle.Size = UDim2.new(1, -18, 0, 14)
 				SliderTitle.Name = "SliderTitle"
 				SliderTitle.Parent = Slider
 
-				SliderContent.Font = Enum.Font.GothamBold
-				SliderContent.Text = SliderConfig.Content
-				SliderContent.TextColor3 = Color3.fromRGB(255, 255, 255)
-				SliderContent.TextSize = 12
-				SliderContent.TextTransparency = 0.6000000238418579
+				SliderContent.Font = Enum.Font.Gotham
+				SliderContent.Text = tostring(SliderConfig.Content)
+				SliderContent.TextColor3 = Theme.MutedText
+				SliderContent.TextSize = 11
+				SliderContent.TextTransparency = 0.2
 				SliderContent.TextXAlignment = Enum.TextXAlignment.Left
-				SliderContent.TextYAlignment = Enum.TextYAlignment.Bottom
-				SliderContent.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-				SliderContent.BackgroundTransparency = 0.9990000128746033
-				SliderContent.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				SliderContent.TextYAlignment = Enum.TextYAlignment.Top
+				SliderContent.TextWrapped = true
+				SliderContent.BackgroundTransparency = 1
 				SliderContent.BorderSizePixel = 0
-				SliderContent.Position = UDim2.new(0, 10, 0, 23)
-				SliderContent.Size = UDim2.new(1, -180, 0, 12)
+				SliderContent.Position = UDim2.new(0, 9, 0, 23)
+				SliderContent.Size = UDim2.new(1, -18, 0, 14)
 				SliderContent.Name = "SliderContent"
 				SliderContent.Parent = Slider
 
-				SliderContent.Size = UDim2.new(1, -180, 0, 12 + (12 * (SliderContent.TextBounds.X // SliderContent.AbsoluteSize.X)))
-				SliderContent.TextWrapped = true
-				Slider.Size = UDim2.new(1, 0, 0, SliderContent.AbsoluteSize.Y + 33)
+				local function updateSliderDescriptionHeight()
+					local parentWidth = Slider.AbsoluteSize.X
+					if parentWidth <= 0 then return end
+					local textWidth = math.max(40, parentWidth - 18)
+					local measured = TextService:GetTextSize(tostring(SliderContent.Text or ""), SliderContent.TextSize, SliderContent.Font, Vector2.new(textWidth, 10000))
+					local contentHeight = math.max(13, math.ceil(measured.Y))
+					SliderContent.Size = UDim2.new(1, -18, 0, contentHeight)
+					local wantedHeight = math.max(68, SliderContent.Position.Y.Offset + contentHeight + 28)
+					if Slider.Size.Y.Scale ~= 0 or Slider.Size.Y.Offset ~= wantedHeight then
+						Slider.Size = UDim2.new(1, 0, 0, wantedHeight)
+						UpdateSizeSection()
+					end
+				end
+				Slider:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateSliderDescriptionHeight)
+				SliderContent:GetPropertyChangedSignal("Text"):Connect(updateSliderDescriptionHeight)
+				task.defer(updateSliderDescriptionHeight)
 
-				SliderContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-					SliderContent.TextWrapped = false
-					SliderContent.Size = UDim2.new(1, -180, 0, 12 + (12 * (SliderContent.TextBounds.X // SliderContent.AbsoluteSize.X)))
-					Slider.Size = UDim2.new(1, 0, 0, SliderContent.AbsoluteSize.Y + 33)
-					SliderContent.TextWrapped = true
-					UpdateSizeSection()
-				end)
-
-				SliderInput.AnchorPoint = Vector2.new(0, 0.5)
+				SliderInput.AnchorPoint = Vector2.new(1, 1)
 				SliderInput.BackgroundColor3 = GuiConfig.Color
-				SliderInput.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				SliderInput.BorderSizePixel = 0
-				SliderInput.Position = UDim2.new(1, -155, 0.5, 0)
-				SliderInput.Size = UDim2.new(0, 28, 0, 20)
+				SliderInput.Position = UDim2.new(1, -8, 1, -5)
+				SliderInput.Size = UDim2.new(0, 64, 0, 22)
 				SliderInput.Name = "SliderInput"
 				SliderInput.Parent = Slider
-
-				UICorner16.CornerRadius = UDim.new(0, 2)
+				UICorner16.CornerRadius = UDim.new(0, 4)
 				UICorner16.Parent = SliderInput
 
 				TextBox.Font = Enum.Font.GothamBold
-				TextBox.Text = "90"
-				TextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-				TextBox.TextSize = 13
-				TextBox.TextWrapped = true
-				TextBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-				TextBox.BackgroundTransparency = 0.9990000128746033
-				TextBox.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				TextBox.Text = ""
+				TextBox.TextColor3 = Theme.Text
+				TextBox.TextSize = 10
+				TextBox.TextWrapped = false
+				TextBox.TextXAlignment = Enum.TextXAlignment.Center
+				TextBox.ClearTextOnFocus = false
+				TextBox.BackgroundTransparency = 1
 				TextBox.BorderSizePixel = 0
-				TextBox.Position = UDim2.new(0, -1, 0, 0)
-				TextBox.Size = UDim2.new(1, 0, 1, 0)
+				TextBox.Size = UDim2.new(1, -4, 1, 0)
+				TextBox.Position = UDim2.new(0, 2, 0, 0)
+				TextBox.ZIndex = 2
 				TextBox.Parent = SliderInput
 
-				SliderFrame.AnchorPoint = Vector2.new(1, 0.5)
+				SliderFrame.AnchorPoint = Vector2.new(0, 1)
 				SliderFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-				SliderFrame.BackgroundTransparency = 0.800000011920929
-				SliderFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				SliderFrame.BackgroundTransparency = 0.78
 				SliderFrame.BorderSizePixel = 0
-				SliderFrame.Position = UDim2.new(1, -20, 0.5, 0)
-				SliderFrame.Size = UDim2.new(0, 100, 0, 3)
+				SliderFrame.Position = UDim2.new(0, 9, 1, -14)
+				SliderFrame.Size = UDim2.new(1, -90, 0, 4)
 				SliderFrame.Name = "SliderFrame"
+				SliderFrame.Active = true
 				SliderFrame.Parent = Slider
-
 				UICorner17.Parent = SliderFrame
 
 				SliderDraggable.AnchorPoint = Vector2.new(0, 0.5)
 				SliderDraggable.BackgroundColor3 = GuiConfig.Color
-				SliderDraggable.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				SliderDraggable.BorderSizePixel = 0
 				SliderDraggable.Position = UDim2.new(0, 0, 0.5, 0)
-				SliderDraggable.Size = UDim2.new(0.899999976, 0, 0, 1)
+				SliderDraggable.Size = UDim2.new(0, 0, 0, 2)
 				SliderDraggable.Name = "SliderDraggable"
+				SliderDraggable.Active = true
 				SliderDraggable.Parent = SliderFrame
-
 				UICorner18.Parent = SliderDraggable
 
-				SliderCircle.AnchorPoint = Vector2.new(1, 0.5)
+				SliderCircle.AnchorPoint = Vector2.new(0.5, 0.5)
 				SliderCircle.BackgroundColor3 = GuiConfig.Color
-				SliderCircle.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				SliderCircle.BorderSizePixel = 0
-				SliderCircle.Position = UDim2.new(1, 4, 0.5, 0)
-				SliderCircle.Size = UDim2.new(0, 8, 0, 8)
+				SliderCircle.Position = UDim2.new(1, 0, 0.5, 0)
+				SliderCircle.Size = UDim2.new(0, 9, 0, 9)
 				SliderCircle.Name = "SliderCircle"
+				SliderCircle.Active = true
 				SliderCircle.Parent = SliderDraggable
-
 				UICorner19.Parent = SliderCircle
-
 				UIStroke6.Color = GuiConfig.Color
 				UIStroke6.Parent = SliderCircle
 
-				local Dragging = false
-				local function Round(Number, Factor)
-					local Result = math.floor(Number/Factor + (math.sign(Number) * 0.5)) * Factor
-					if Result < 0 then 
-						Result = Result + Factor 
-					end
-					return Result
+				local function countDecimals(number)
+					local formatted = string.format("%.8f", number):gsub("0+$", ""):gsub("%.$", "")
+					local decimalPart = string.match(formatted, "%.(%d+)$")
+					return decimalPart and #decimalPart or 0
 				end
-				function SliderFunc:Set(Value)
-					Value = math.clamp(Round(Value, SliderConfig.Increment), SliderConfig.Min, SliderConfig.Max)
+				local decimalPlaces = math.max(countDecimals(SliderConfig.Increment), countDecimals(SliderConfig.Min), countDecimals(SliderConfig.Max))
+				local function formatNumber(value)
+					if decimalPlaces > 0 then
+						return string.format("%." .. tostring(decimalPlaces) .. "f", value)
+					end
+					return tostring(math.floor(value + 0.5))
+				end
+				local function roundToIncrement(value)
+					if value <= SliderConfig.Min then return SliderConfig.Min end
+					if value >= SliderConfig.Max then return SliderConfig.Max end
+					return SliderConfig.Min + math.floor(((value - SliderConfig.Min) / SliderConfig.Increment) + 0.5) * SliderConfig.Increment
+				end
+				local dragging = false
+				local activeTouch = nil
+				local function updateSliderFromX(x, fromDrag)
+					local width = SliderFrame.AbsoluteSize.X
+					if width <= 0 or SliderConfig.Max == SliderConfig.Min then return end
+					local ratio = math.clamp((x - SliderFrame.AbsolutePosition.X) / width, 0, 1)
+					local value = SliderConfig.Min + (SliderConfig.Max - SliderConfig.Min) * ratio
+					SliderFunc:Set(value, true, fromDrag)
+				end
+
+				function SliderFunc:Set(Value, SkipCallback, IsDragging)
+					Value = tonumber(Value)
+					if not Value then return false end
+					Value = math.clamp(roundToIncrement(Value), SliderConfig.Min, SliderConfig.Max)
+					-- Avoid floating-point tails such as 0.30000000004 in callbacks and labels.
+					if decimalPlaces > 0 then Value = tonumber(string.format("%." .. tostring(decimalPlaces) .. "f", Value)) end
 					SliderFunc.Value = Value
-					TextBox.Text = tostring(Value)
-					TweenService:Create(
-						SliderDraggable,
-						TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-						{Size = UDim2.fromScale((Value - SliderConfig.Min) / (SliderConfig.Max - SliderConfig.Min), 1)}
-					):Play()
+					TextBox.Text = formatNumber(Value)
+					local span = SliderConfig.Max - SliderConfig.Min
+					local ratio = span == 0 and 0 or math.clamp((Value - SliderConfig.Min) / span, 0, 1)
+					local nextSize = UDim2.new(ratio, 0, 0, 2)
+					if IsDragging then
+						SliderDraggable.Size = nextSize
+						SliderDraggable.BackgroundColor3 = GuiConfig.Color
+					else
+						TweenService:Create(SliderDraggable, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = nextSize}):Play()
+					end
+					if not SkipCallback then SliderConfig.Callback(Value) end
+					return true
 				end
-				SliderFrame.InputBegan:Connect(function(Input)
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 then 
-						Dragging = true 
-					end 
+
+				local function beginDrag(input)
+					if dragging then return end
+					if input.UserInputType == Enum.UserInputType.MouseButton1 then
+						dragging = true
+						activeTouch = nil
+						updateSliderFromX(input.Position.X, true)
+					elseif input.UserInputType == Enum.UserInputType.Touch then
+						dragging = true
+						activeTouch = input
+						updateSliderFromX(input.Position.X, true)
+						input.Changed:Connect(function()
+							if input.UserInputState == Enum.UserInputState.End and activeTouch == input then
+								dragging = false
+								activeTouch = nil
+								SliderConfig.Callback(SliderFunc.Value)
+							end
+						end)
+					end
+				end
+				SliderFrame.InputBegan:Connect(beginDrag)
+				SliderDraggable.InputBegan:Connect(beginDrag)
+				SliderCircle.InputBegan:Connect(beginDrag)
+				UserInputService.InputChanged:Connect(function(input)
+					if not dragging then return end
+					if input.UserInputType == Enum.UserInputType.MouseMovement or (input.UserInputType == Enum.UserInputType.Touch and input == activeTouch) then
+						updateSliderFromX(input.Position.X, true)
+					end
 				end)
-				SliderFrame.InputEnded:Connect(function(Input) 
-					if Input.UserInputType == Enum.UserInputType.MouseButton1 then 
-						Dragging = false 
+				UserInputService.InputEnded:Connect(function(input)
+					if dragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
+						dragging = false
+						activeTouch = nil
 						SliderConfig.Callback(SliderFunc.Value)
-					end 
-				end)
-				UserInputService.InputChanged:Connect(function(Input)
-					if Dragging and Input.UserInputType == Enum.UserInputType.MouseMovement then 
-						local SizeScale = math.clamp((Input.Position.X - SliderFrame.AbsolutePosition.X) / SliderFrame.AbsoluteSize.X, 0, 1)
-						SliderFunc:Set(SliderConfig.Min + ((SliderConfig.Max - SliderConfig.Min) * SizeScale)) 
 					end
 				end)
-				TextBox:GetPropertyChangedSignal("Text"):Connect(function()
-					local Valid = TextBox.Text:gsub("[^%d]", "")
-					if Valid ~= "" then
-						local ValidNumber = math.min(tonumber(Valid), SliderConfig.Max)
-						TextBox.Text = tostring(ValidNumber)
-					else
-						TextBox.Text = tostring(Valid)
+
+				TextBox.FocusLost:Connect(function(enterPressed)
+					local parsed = tonumber((TextBox.Text or ""):gsub(",", "."))
+					if parsed == nil then
+						TextBox.Text = formatNumber(SliderFunc.Value)
+						return
 					end
+					SliderFunc:Set(parsed)
 				end)
-				TextBox.FocusLost:Connect(function()
-					if TextBox.Text ~= "" then
-						SliderFunc:Set(tonumber(TextBox.Text))
-					else
-						SliderFunc:Set(0)
-					end
+				TextBox.Focused:Connect(function()
+					TextBox.Text = formatNumber(SliderFunc.Value)
 				end)
-				SliderFunc:Set(tonumber(SliderConfig.Default))
+
+				SliderFunc:Set(SliderConfig.Default, true, false)
 				CountItem = CountItem + 1
 				return SliderFunc
 			end
@@ -1820,21 +2170,9 @@ function FlurioreLib:MakeGui(GuiConfig)
 				InputContent.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				InputContent.BorderSizePixel = 0
 				InputContent.Position = UDim2.new(0, 10, 0, 23)
-				InputContent.Size = UDim2.new(1, -180, 0, 12)
+				InputContent.Size = UDim2.new(1, -155, 0, 12)
 				InputContent.Name = "InputContent"
 				InputContent.Parent = Input
-
-				InputContent.Size = UDim2.new(1, -180, 0, 12 + (12 * (InputContent.TextBounds.X // InputContent.AbsoluteSize.X)))
-				InputContent.TextWrapped = true
-				Input.Size = UDim2.new(1, 0, 0, InputContent.AbsoluteSize.Y + 33)
-
-				InputContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-					InputContent.TextWrapped = false
-					InputContent.Size = UDim2.new(1, -180, 0, 12 + (12 * (InputContent.TextBounds.X // InputContent.AbsoluteSize.X)))
-					Input.Size = UDim2.new(1, 0, 0, InputContent.AbsoluteSize.Y + 33)
-					InputContent.TextWrapped = true
-					UpdateSizeSection()
-				end)
 
 				InputFrame.AnchorPoint = Vector2.new(1, 0.5)
 				InputFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -1843,9 +2181,25 @@ function FlurioreLib:MakeGui(GuiConfig)
 				InputFrame.BorderSizePixel = 0
 				InputFrame.ClipsDescendants = true
 				InputFrame.Position = UDim2.new(1, -7, 0.5, 0)
-				InputFrame.Size = UDim2.new(0, 148, 0, 30)
+				InputFrame.Size = UDim2.new(0, 122, 0, 28)
 				InputFrame.Name = "InputFrame"
 				InputFrame.Parent = Input
+
+				local refreshInputDescription
+				local function updateInputLayout()
+					local width = Input.AbsoluteSize.X
+					if width <= 0 then return end
+					local inputWidth = math.clamp(math.floor(width * 0.42), 88, 122)
+					InputFrame.Size = UDim2.new(0, inputWidth, 0, 28)
+					local rightPadding = inputWidth + 22
+					InputTitle.Size = UDim2.new(1, -(InputTitle.Position.X.Offset + rightPadding), 0, 13)
+					if refreshInputDescription then refreshInputDescription() end
+				end
+				refreshInputDescription = BindWrappedText(InputContent, Input, function()
+					return InputFrame.Size.X.Offset + 22
+				end, 12, 44, 9, UpdateSizeSection)
+				Input:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateInputLayout)
+				task.defer(updateInputLayout)
 
 				UICorner13.CornerRadius = UDim.new(0, 4)
 				UICorner13.Parent = InputFrame
@@ -1868,6 +2222,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 				InputTextBox.Name = "InputTextBox"
 				InputTextBox.Parent = InputFrame
 				function InputFunc:Set(Value)
+					Value = tostring(Value == nil and "" or Value)
 					InputTextBox.Text = Value
 					InputFunc.Value = Value
 					InputConfig.Callback(Value)
@@ -1885,6 +2240,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 				DropdownConfig.Multi = DropdownConfig.Multi or false
 				DropdownConfig.Options = DropdownConfig.Options or {}
 				DropdownConfig.Default = DropdownConfig.Default or {}
+				if type(DropdownConfig.Default) ~= "table" then DropdownConfig.Default = {DropdownConfig.Default} end
 				DropdownConfig.Callback = DropdownConfig.Callback or function() end
 
 				local DropdownFunc = {Value = DropdownConfig.Default, Options = DropdownConfig.Options}
@@ -1934,7 +2290,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 				DropdownTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				DropdownTitle.BorderSizePixel = 0
 				DropdownTitle.Position = UDim2.new(0, 10, 0, 10)
-				DropdownTitle.Size = UDim2.new(1, -180, 0, 13)
+				DropdownTitle.Size = UDim2.new(1, -165, 0, 14)
 				DropdownTitle.Name = "DropdownTitle"
 				DropdownTitle.Parent = Dropdown
 
@@ -1951,29 +2307,42 @@ function FlurioreLib:MakeGui(GuiConfig)
 				DropdownContent.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				DropdownContent.BorderSizePixel = 0
 				DropdownContent.Position = UDim2.new(0, 10, 0, 23)
-				DropdownContent.Size = UDim2.new(1, -180, 0, 12)
+				DropdownContent.Size = UDim2.new(1, -165, 0, 14)
 				DropdownContent.Name = "DropdownContent"
 				DropdownContent.Parent = Dropdown
 
-				DropdownContent.Size = UDim2.new(1, -180, 0, 12 + (12 * (DropdownContent.TextBounds.X // DropdownContent.AbsoluteSize.X)))
+				local function updateDropdownDescriptionHeight()
+					local parentWidth = Dropdown.AbsoluteSize.X
+					if parentWidth <= 0 then return end
+					local selectorWidth = math.clamp(math.floor(parentWidth * 0.40), 84, 110)
+					SelectOptionsFrame.Size = UDim2.new(0, selectorWidth, 0, 25)
+					SelectOptionsFrame.Position = UDim2.new(1, -5, 0.5, 0)
+					local rightPadding = selectorWidth + 27
+					local textWidth = math.max(24, parentWidth - 10 - rightPadding)
+					DropdownTitle.Size = UDim2.new(1, -(10 + rightPadding), 0, 14)
+					DropdownContent.Size = UDim2.new(1, -(10 + rightPadding), 0, 14)
+					local measured = TextService:GetTextSize(tostring(DropdownContent.Text or ""), DropdownContent.TextSize, DropdownContent.Font, Vector2.new(textWidth, 10000))
+					local contentHeight = math.max(14, math.ceil(measured.Y))
+					DropdownContent.Size = UDim2.new(1, -(10 + rightPadding), 0, contentHeight)
+					local wantedHeight = math.max(44, DropdownContent.Position.Y.Offset + contentHeight + 8)
+					if Dropdown.Size.Y.Scale ~= 0 or Dropdown.Size.Y.Offset ~= wantedHeight then
+						Dropdown.Size = UDim2.new(1, 0, 0, wantedHeight)
+						UpdateSizeSection()
+					end
+				end
 				DropdownContent.TextWrapped = true
-				Dropdown.Size = UDim2.new(1, 0, 0, DropdownContent.AbsoluteSize.Y + 33)
-
-				DropdownContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-					DropdownContent.TextWrapped = false
-					DropdownContent.Size = UDim2.new(1, -180, 0, 12 + (12 * (DropdownContent.TextBounds.X // DropdownContent.AbsoluteSize.X)))
-					Dropdown.Size = UDim2.new(1, 0, 0, DropdownContent.AbsoluteSize.Y + 33)
-					DropdownContent.TextWrapped = true
-					UpdateSizeSection()
-				end)
+				DropdownContent:GetPropertyChangedSignal("Text"):Connect(updateDropdownDescriptionHeight)
+				DropdownContent:GetPropertyChangedSignal("TextSize"):Connect(updateDropdownDescriptionHeight)
+				task.defer(updateDropdownDescriptionHeight)
+				Dropdown:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateDropdownDescriptionHeight)
 
 				SelectOptionsFrame.AnchorPoint = Vector2.new(1, 0.5)
 				SelectOptionsFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 				SelectOptionsFrame.BackgroundTransparency = 0.949999988079071
 				SelectOptionsFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				SelectOptionsFrame.BorderSizePixel = 0
-				SelectOptionsFrame.Position = UDim2.new(1, -7, 0.5, 0)
-				SelectOptionsFrame.Size = UDim2.new(0, 148, 0, 30)
+				SelectOptionsFrame.Position = UDim2.new(1, -5, 0.5, 0)
+				SelectOptionsFrame.Size = UDim2.new(0, 110, 0, 25)
 				SelectOptionsFrame.Name = "SelectOptionsFrame"
 				SelectOptionsFrame.LayoutOrder = CountDropdown
 				SelectOptionsFrame.Parent = Dropdown
@@ -1993,7 +2362,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 				OptionSelecting.Font = Enum.Font.GothamBold
 				OptionSelecting.Text = ""
 				OptionSelecting.TextColor3 = Color3.fromRGB(255, 255, 255)
-				OptionSelecting.TextSize = 12
+				OptionSelecting.TextSize = 11
+				OptionSelecting.TextTruncate = Enum.TextTruncate.AtEnd
 				OptionSelecting.TextTransparency = 0.6000000238418579
 				OptionSelecting.TextWrapped = true
 				OptionSelecting.TextXAlignment = Enum.TextXAlignment.Left
@@ -2002,8 +2372,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 				OptionSelecting.BackgroundTransparency = 0.9990000128746033
 				OptionSelecting.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				OptionSelecting.BorderSizePixel = 0
-				OptionSelecting.Position = UDim2.new(0, 5, 0.5, 0)
-				OptionSelecting.Size = UDim2.new(1, -30, 1, -8)
+				OptionSelecting.Position = UDim2.new(0, 6, 0.5, 0)
+				OptionSelecting.Size = UDim2.new(1, -28, 1, -6)
 				OptionSelecting.Name = "OptionSelecting"
 				OptionSelecting.Parent = SelectOptionsFrame
 
@@ -2015,7 +2385,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 				OptionImg.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				OptionImg.BorderSizePixel = 0
 				OptionImg.Position = UDim2.new(1, 0, 0.5, 0)
-				OptionImg.Size = UDim2.new(0, 25, 0, 25)
+				OptionImg.Size = UDim2.new(0, 20, 0, 20)
 				OptionImg.Name = "OptionImg"
 				OptionImg.Parent = SelectOptionsFrame
 
@@ -2041,17 +2411,19 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 				local DropCount = 0
 				function DropdownFunc:Clear()
-					for _, DropFrame in ScrollSelect:GetChildren() do
-						if DropFrame.Name == "Option" then
-							DropdownFunc.Value = {}
-							DropdownFunc.Options = {}
-							OptionSelecting.Text = "Select Options"
-							DropFrame:Destroy()
-						end
+					for _, DropFrame in ipairs(ScrollSelect:GetChildren()) do
+						if DropFrame.Name == "Option" then DropFrame:Destroy() end
 					end
+					DropdownFunc.Value = {}
+					DropdownFunc.Options = {}
+					OptionSelecting.Text = "Select Options"
+					ScrollSelect.CanvasSize = UDim2.new(0, 0, 0, 0)
 				end
 				function DropdownFunc:Set(Value)
-					DropdownFunc.Value = Value or DropdownFunc.Value
+					if Value ~= nil then
+						if type(Value) ~= "table" then Value = {Value} end
+						DropdownFunc.Value = Value
+					end
 					for _, Drop in ScrollSelect:GetChildren() do
 						if Drop.Name ~= "UIListLayout" and not table.find(DropdownFunc.Value, Drop.OptionText.Text) then
 							TweenService:Create(
@@ -2096,7 +2468,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 					DropdownConfig.Callback(DropdownFunc.Value)
 				end
 				function DropdownFunc:AddOption(OptionName)
-					OptionName = OptionName or "Option"
+					OptionName = tostring(OptionName or "Option")
 					DropdownFunc.Options = DropdownFunc.Options or {}
 					table.insert(DropdownFunc.Options, OptionName)
 					local Option = Instance.new("Frame");
@@ -2195,10 +2567,10 @@ function FlurioreLib:MakeGui(GuiConfig)
 				function DropdownFunc:Refresh(RefreshList, Selecting)
 					RefreshList = RefreshList or {}
 					Selecting = Selecting or {}
+					if type(Selecting) ~= "table" then Selecting = {Selecting} end
 					DropdownFunc:Clear()
-					for _, Drop in pairs(RefreshList) do
+					for _, Drop in ipairs(RefreshList) do
 						DropdownFunc:AddOption(Drop)
-						wait()
 					end
 					DropdownFunc.Options = RefreshList
 					DropdownFunc:Set(Selecting)

@@ -1,58 +1,253 @@
 # FlurioreLib
 
-A Lua UI library for Roblox with animated notifications, a draggable/resizable window, tabs, collapsible sections, and common UI components.
+FlurioreLib is a compact Roblox Lua UI library with a draggable/resizable window, tabs, collapsible sections, notifications, and common UI components. This version includes mobile-friendly slider dragging, editable slider values, responsive text sizing, a smooth minimize animation, display settings, and a code-driven theme API.
 
-> **Compatibility:** The GitHub loader example uses `game:HttpGet()` and `loadstring()`, which are not available in every Roblox execution environment. For a Roblox Studio experience, place `Flur.lua` in a `ModuleScript` and use `require()` from a `LocalScript` instead. Use this library only in experiences and environments where you have permission to run your code.
+## Executor compatibility
 
-## Files
+This library is intended for Roblox script-executor environments such as **Delta** and other executors that allow `game:HttpGet()` and `loadstring()`. Executor APIs and compatibility can change between versions, so support is not guaranteed for every executor or configuration. Use scripts only in experiences and environments where you have permission to run them.
 
-- `Flur.lua` — the library module; returns the `FlurioreLib` table.
-- `LoaderExample.lua` — GitHub download loader and runnable showcase for the public API.
+### Load from the published GitHub file
 
-This package includes small fixes to the source so the documented methods work as expected: the returned window exposes `CreateTab`, `ToggleUI`, and `DestroyGui`; `Toggle:Set()` keeps `Toggle.Value` synchronized; Paragraph updates recalculate text height; Input uses the configured title and description; and `Dropdown:AddOption()` keeps its `Options` array updated.
+The raw source URL for this repository is:
+
+```text
+https://raw.githubusercontent.com/MCUpload123/Fluriore-library/refs/heads/main/Flur.lua
+```
+
+Example loader:
+
+```lua
+local LibraryURL = "https://raw.githubusercontent.com/MCUpload123/Fluriore-library/refs/heads/main/Flur.lua"
+
+local ok, source = pcall(function()
+    return game:HttpGet(LibraryURL)
+end)
+assert(ok, "FlurioreLib download failed: " .. tostring(source))
+
+local chunk, compileError = loadstring(source)
+assert(type(chunk) == "function", "FlurioreLib compile failed: " .. tostring(compileError))
+
+local success, FlurioreLib = pcall(chunk)
+assert(success, "FlurioreLib initialization failed: " .. tostring(FlurioreLib))
+```
+
+`FlurioreLib` is the library table returned by `Flur.lua`. Keep the URL pointed at a trusted source: `loadstring` executes the downloaded Lua code, so review source changes before running them.
 
 ## Quick start
 
 ```lua
-local FlurioreLib = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/MCUpload123/Fluriore-library/refs/heads/main/Flur.lua"
-))()
+local LibraryURL = "https://raw.githubusercontent.com/MCUpload123/Fluriore-library/refs/heads/main/Flur.lua"
+local FlurioreLib = loadstring(game:HttpGet(LibraryURL))()
 
 local Window = FlurioreLib:MakeGui({
     NameHub = "My Hub",
     Description = "Made with FlurioreLib",
     Color = Color3.fromRGB(255, 0, 255),
+    UIScale = 0.9,
+    TextScale = 1,
 })
 
 local Tab = Window:CreateTab({Name = "Home", Icon = ""})
 local Section = Tab:AddSection("General")
 
+Section:AddParagraph({
+    Title = "Welcome",
+    Content = "This description automatically adjusts to its available width.",
+})
+
 Section:AddButton({
     Title = "Say hello",
-    Content = "Prints a message to the output.",
+    Content = "Prints a message when pressed.",
     Callback = function()
         print("Hello!")
     end,
 })
 ```
 
-## API reference
+## Window configuration
 
-All names below match the current source. Configuration keys are case-sensitive.
+`FlurioreLib:MakeGui(config)` accepts these keys:
 
-### 1. Notifications
-
-#### `FlurioreLib:MakeNotify(config)`
-Creates a notification and returns a handle with `:Close()`.
-
-| Config key | Type | Default | Description |
+| Key | Type | Default | Description |
 |---|---|---|---|
-| `Title` | string | `"Hirimi Hub"` | Main title |
-| `Description` | string | `"Notification"` | Short subtitle |
-| `Content` | string | `"Content"` | Message body |
+| `NameHub` | string | `"Hirimi Hub"` | Window title |
+| `Description` | string | `"Comeback | developing by Hirimi, Teru"` | Header subtitle |
 | `Color` | `Color3` | Magenta | Accent color |
-| `Time` | number | `0.5` | Animation duration |
-| `Delay` | number | `5` | Seconds before auto-close |
+| `Logo Player` | string | Current player's headshot URL | Avatar image |
+| `Name Player` | string | Current player's name | Name shown at the lower left |
+| `Tab Width` | number | `120` | Sidebar width |
+| `UIScale` | number | `0.9` | Initial UI scale; clamped to `0.75–1.2` |
+| `TextScale` | number | `1` | Initial text scale; clamped to `0.7–1.5` |
+| `Theme` | table | Built-in palette | Optional color palette, shown below |
+
+The gear icon beside the minimize control opens **Display settings**. The panel lets users adjust text size and overall UI size, or reset them to defaults. It deliberately does not contain a theme picker.
+
+The minimize control smoothly collapses the window to its header; pressing it again restores the content. `RightShift` toggles window visibility. `Window:ToggleUI()` also toggles visibility; `Window:DestroyGui()` removes the UI.
+
+## Theme support
+
+The library supports custom themes through configuration and code. It does not create a theme editor or theme-selection list, so you can build your own theme interface.
+
+Available theme color keys:
+
+| Key | Purpose |
+|---|---|
+| `Accent` | Highlight color and active controls |
+| `Background` | Main/settings background |
+| `Surface` | Component surfaces |
+| `Text` | Primary text |
+| `MutedText` | Description/secondary text |
+| `Border` | UI outlines |
+
+Example at creation time:
+
+```lua
+local Window = FlurioreLib:MakeGui({
+    NameHub = "Custom UI",
+    Color = Color3.fromRGB(255, 80, 170),
+    Theme = {
+        Accent = Color3.fromRGB(255, 80, 170),
+        Background = Color3.fromRGB(18, 20, 28),
+        Surface = Color3.fromRGB(42, 45, 58),
+        Text = Color3.fromRGB(245, 245, 250),
+        MutedText = Color3.fromRGB(165, 170, 185),
+        Border = Color3.fromRGB(70, 75, 95),
+    },
+})
+```
+
+Change it later:
+
+```lua
+Window:SetTheme({
+    Accent = Color3.fromRGB(80, 190, 255),
+    Background = Color3.fromRGB(15, 18, 25),
+    Surface = Color3.fromRGB(35, 40, 50),
+    Text = Color3.fromRGB(245, 245, 245),
+    MutedText = Color3.fromRGB(160, 170, 185),
+    Border = Color3.fromRGB(65, 75, 90),
+})
+```
+
+Only color keys included in the table are changed. All values must be Roblox `Color3` values.
+
+## Window methods
+
+| Method | Description |
+|---|---|
+| `Window:CreateTab({Name, Icon})` | Creates a tab and returns a tab handle |
+| `Window:ToggleUI()` | Shows/hides the window; returns its new visibility state |
+| `Window:DestroyGui()` | Destroys this library window |
+| `Window:SetTextScale(number)` | Sets text scale from `0.7` to `1.5`; returns `true` when accepted |
+| `Window:SetUIScale(number)` | Sets UI scale from `0.75` to `1.2`; returns `true` when accepted |
+| `Window:SetTheme(themeTable)` | Applies theme colors; returns `true` for a table argument |
+
+`Tab:AddSection(title)` creates a collapsible section and returns the component handle used below.
+
+## Components
+
+### Paragraph
+
+```lua
+local Info = Section:AddParagraph({
+    Title = "Status",
+    Content = "Initial status text.",
+})
+
+Info:Set({
+    Title = "Updated status",
+    Content = "The description height is recalculated when the text changes.",
+})
+```
+
+### Button
+
+```lua
+Section:AddButton({
+    Title = "Run",
+    Content = "Runs a callback.",
+    Icon = "rbxassetid://16932740082", -- optional
+    Callback = function()
+        print("Button pressed")
+    end,
+})
+```
+
+### Toggle
+
+```lua
+local Toggle = Section:AddToggle({
+    Title = "Enabled",
+    Content = "Turn a feature on or off.",
+    Default = false,
+    Callback = function(enabled)
+        print("Enabled:", enabled)
+    end,
+})
+
+Toggle:Set(true) -- updates the control and calls Callback
+print(Toggle.Value)
+```
+
+### Slider
+
+```lua
+local Slider = Section:AddSlider({
+    Title = "Power",
+    Content = "Drag the bar or tap the pink value field to type a number.",
+    Min = 0,
+    Max = 10,
+    Default = 2.5,
+    Increment = 0.25,
+    Callback = function(value)
+        print("Power:", value)
+    end,
+})
+
+Slider:Set(4.75)
+print(Slider.Value)
+```
+
+Slider dragging supports mouse and touch input. The pink value field is editable. `Increment` controls rounding and precision: use `Increment = 1` for whole numbers, `0.1` for tenths, or `0.25` for quarter steps. The value is rounded to the nearest increment and clamped to `Min`/`Max`; the minimum and maximum endpoints remain selectable even when the range is not an exact multiple of `Increment`.
+
+### Input
+
+```lua
+local TextInput = Section:AddInput({
+    Title = "Player name",
+    Content = "Enter a name.",
+    Callback = function(value)
+        print("Input:", value)
+    end,
+})
+
+TextInput:Set("Example")
+print(TextInput.Value)
+```
+
+### Dropdown
+
+```lua
+local Dropdown = Section:AddDropdown({
+    Title = "Target",
+    Content = "Choose an option.",
+    Multi = false,
+    Options = {"Alpha", "Bravo", "Charlie"},
+    Default = "Alpha",
+    Callback = function(values)
+        print(table.concat(values, ", "))
+    end,
+})
+
+Dropdown:Set("Bravo")
+Dropdown:AddOption("Delta")
+Dropdown:Refresh({"One", "Two", "Three"}, "Two")
+-- Dropdown:Clear() removes the available options and selection.
+```
+
+A dropdown's `Value` is a table of selected option strings, including when `Multi = false`. `Options` stores the available option strings.
+
+## Notifications
 
 ```lua
 local Notice = FlurioreLib:MakeNotify({
@@ -60,160 +255,16 @@ local Notice = FlurioreLib:MakeNotify({
     Description = "Settings",
     Content = "Your settings were saved.",
     Color = Color3.fromRGB(80, 200, 120),
-    Time = 0.4,
+    Time = 0.5,
     Delay = 4,
 })
-
--- Close it early:
-Notice:Close()
 ```
 
-`Notice:Close()` begins the closing animation and removes the notification. It is safe against repeated close calls in the current implementation.
+`Time` controls the animation duration, and `Delay` is the auto-close delay in seconds. The notification also has a close button.
 
-### 2. Window
+## Notes
 
-#### `FlurioreLib:MakeGui(config)`
-Creates the main window and returns a window handle.
-
-| Config key | Type | Default | Description |
-|---|---|---|---|
-| `NameHub` | string | `"Hirimi Hub"` | Window title |
-| `Description` | string | `"Comeback \| developing by Hirimi, Teru"` | Subtitle |
-| `Color` | `Color3` | Magenta | Accent color |
-| `Logo Player` | string | Current player's Roblox headshot URL | Player avatar image |
-| `Name Player` | string | Current player's name | Display name |
-| `Tab Width` | number | `120` | Width of the tab sidebar |
-
-Returned window methods:
-
-- `Window:ToggleUI()` — toggles the window's visibility.
-- `Window:DestroyGui()` — removes this window's ScreenGui.
-- `Window:CreateTab(config)` — creates a tab and returns a tab handle.
-
-### 3. Tabs and sections
-
-#### `Window:CreateTab(config)`
-
-| Config key | Type | Default | Description |
-|---|---|---|---|
-| `Name` | string | `"Tab"` | Tab label |
-| `Icon` | string | `""` | Image URL or Roblox asset string |
-
-Returns a tab handle containing:
-
-- `Tab:AddSection(title)` — creates a collapsible section and returns an item handle.
-
-Example:
-
-```lua
-local Tab = Window:CreateTab({Name = "Settings", Icon = ""})
-local Section = Tab:AddSection("General settings")
-```
-
-### 4. Components
-
-All component methods are called on the section handle returned by `Tab:AddSection(...)`.
-
-#### `Section:AddParagraph(config)`
-Displays informational text. Returns a paragraph handle.
-
-| Config key | Type | Default |
-|---|---|---|
-| `Title` | string | `"Title"` |
-| `Content` | string | `"Content"` |
-
-Paragraph methods:
-
-- `Paragraph:Set({Title = "New title", Content = "New text"})` — updates its title and content.
-
-#### `Section:AddButton(config)`
-Displays a clickable button. Returns an empty handle; use `Callback` for its action.
-
-| Config key | Type | Default |
-|---|---|---|
-| `Title` | string | `"Title"` |
-| `Content` | string | `"Content"` |
-| `Icon` | string | `"rbxassetid://16932740082"` |
-| `Callback` | function | Empty function | 
-
-`Callback` is called without arguments when the user activates the button.
-
-#### `Section:AddToggle(config)`
-Displays an on/off toggle. Returns a toggle handle with `Value` and `:Set(value)`.
-
-| Config key | Type | Default |
-|---|---|---|
-| `Title` | string | `"Title"` |
-| `Content` | string | `"Content"` |
-| `Default` | boolean | `false` |
-| `Callback` | function | Empty function |
-
-`Callback(value)` receives a boolean. `Toggle:Set(true)` updates the visual state, updates `Toggle.Value`, and calls the callback.
-
-#### `Section:AddSlider(config)`
-Displays a numeric slider and text entry. Returns a slider handle with `Value` and `:Set(value)`.
-
-| Config key | Type | Default |
-|---|---|---|
-| `Title` | string | `"Slider"` |
-| `Content` | string | `"Content"` |
-| `Min` | number | `0` |
-| `Max` | number | `100` |
-| `Default` | number | `50` |
-| `Increment` | number | `1` |
-| `Callback` | function | Empty function |
-
-The slider clamps values to `Min`–`Max` and rounds to `Increment`. `Callback(value)` is called when the user finishes dragging the slider; calling `Slider:Set(value)` changes the stored/displayed value but does not call the callback in the current implementation. Set `Min` lower than `Max` and use a positive `Increment`.
-
-#### `Section:AddInput(config)`
-Displays a text input. Returns an input handle with `Value` and `:Set(value)`.
-
-| Config key | Type | Default |
-|---|---|---|
-| `Title` | string | `"Title"` |
-| `Content` | string | `"Content"` |
-| `Callback` | function | Empty function |
-
-`Callback(value)` receives a string when the field loses focus or `Input:Set(value)` is called.
-
-#### `Section:AddDropdown(config)`
-Displays a dropdown. Returns a dropdown handle with `Value`, `Options`, and methods below.
-
-| Config key | Type | Default | Description |
-|---|---|---|---|
-| `Title` | string | `"Title"` | Component title |
-| `Content` | string | `"Content"` | Description |
-| `Multi` | boolean | `false` | Allow more than one selection |
-| `Options` | array of strings | `{}` | Initial options |
-| `Default` | array of strings | `{}` | Initial selected option(s) |
-| `Callback` | function | Empty function | Called with the selected-value array |
-
-Dropdown methods:
-
-- `Dropdown:Set(values)` — selects the values in an array and calls the callback.
-- `Dropdown:Clear()` — removes all options and clears the selection.
-- `Dropdown:AddOption(name)` — adds an option to the UI and the `Options` array.
-- `Dropdown:Refresh(options, selectedValues)` — replaces the option list and applies the selected values; both arguments are optional arrays.
-
-Even with `Multi = false`, the callback receives an array, for example `{"Banana"}`, rather than a plain string.
-
-### 5. Full component example
-
-See `LoaderExample.lua` for a complete example that demonstrates:
-
-- `MakeNotify()` and notification `:Close()`
-- `MakeGui()`, `:ToggleUI()`, and `:DestroyGui()`
-- `:CreateTab()` and `:AddSection()`
-- `:AddParagraph()` and `:Set()`
-- `:AddButton()` and `Callback`
-- `:AddToggle()` and `:Set()`
-- `:AddSlider()` and `:Set()`
-- `:AddInput()` and `:Set()`
-- `:AddDropdown()`, `:Set()`, `:Clear()`, `:AddOption()`, and `:Refresh()`
-
-## Notes and limitations
-
-- The GUI is parented to the local player's `PlayerGui`; `CoreGui` is only the name of a local variable in the source.
-- `RightShift` toggles the window in addition to `Window:ToggleUI()`.
-- The slider's text input currently accepts digits only, so it is not suitable for negative or decimal values without further changes.
-- This library creates client-side UI; it does not grant server permissions or make server-side game changes.
+- UI descriptions use text measurement to wrap to their available width instead of relying on `TextBounds / AbsoluteSize`, which may be zero during initial creation.
+- Slider numeric input precision comes from `Increment`, `Min`, and `Max`.
+- Executor behavior can vary by version and settings. This source has not been runtime-tested in every executor.
+- Review downloaded source before execution because a raw GitHub loader runs the code it downloads.
