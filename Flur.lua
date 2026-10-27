@@ -1,5 +1,6 @@
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 local LocalPlayer = game:GetService("Players").LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local TextService = game:GetService("TextService")
@@ -139,6 +140,101 @@ function CircleClick(Button, X, Y)
 end
 
 local FlurioreLib = {}
+
+local NotifyState = {
+	Position = "BottomRight",
+	MaxVisible = 5,
+	Active = {},
+}
+
+local NotifyAnchors = {
+	BottomRight = {Anchor = Vector2.new(1, 1), Pos = UDim2.new(1, -30, 1, -30), StackDir = -1},
+	BottomLeft = {Anchor = Vector2.new(0, 1), Pos = UDim2.new(0, 30, 1, -30), StackDir = -1},
+	TopRight = {Anchor = Vector2.new(1, 0), Pos = UDim2.new(1, -30, 0, 30), StackDir = 1},
+	TopLeft = {Anchor = Vector2.new(0, 0), Pos = UDim2.new(0, 30, 0, 30), StackDir = 1},
+}
+
+local function ensureNotifyLayout()
+	if not CoreGui:FindFirstChild("NotifyGui") then
+		local NotifyGui = Instance.new("ScreenGui")
+		NotifyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+		NotifyGui.Name = "NotifyGui"
+		NotifyGui.Parent = CoreGui
+	end
+	local layout = CoreGui.NotifyGui:FindFirstChild("NotifyLayout")
+	if not layout then
+		layout = Instance.new("Frame")
+		layout.BackgroundTransparency = 1
+		layout.BorderSizePixel = 0
+		layout.Size = UDim2.new(0, 320, 1, 0)
+		layout.Name = "NotifyLayout"
+		layout.Parent = CoreGui.NotifyGui
+	end
+	local cfg = NotifyAnchors[NotifyState.Position] or NotifyAnchors.BottomRight
+	layout.AnchorPoint = cfg.Anchor
+	layout.Position = cfg.Pos
+	return layout, cfg
+end
+
+local function restackNotifies()
+	local layout, cfg = ensureNotifyLayout()
+	local stackDir = cfg.StackDir
+	local offset = 0
+	local children = {}
+	for _, child in ipairs(layout:GetChildren()) do
+		if child.Name == "NotifyFrame" then
+			table.insert(children, child)
+		end
+	end
+	for i, frame in ipairs(children) do
+		local target
+		if stackDir < 0 then
+			target = UDim2.new(0, 0, 1, -(offset))
+			frame.AnchorPoint = Vector2.new(0, 1)
+		else
+			target = UDim2.new(0, 0, 0, offset)
+			frame.AnchorPoint = Vector2.new(0, 0)
+		end
+		TweenService:Create(frame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = target}):Play()
+		offset = offset + frame.Size.Y.Offset + 12
+	end
+end
+
+function FlurioreLib:SetNotifyPosition(position)
+	if not NotifyAnchors[position] then return false end
+	NotifyState.Position = position
+	ensureNotifyLayout()
+	restackNotifies()
+	return true
+end
+
+function FlurioreLib:GetNotifyPosition()
+	return NotifyState.Position
+end
+
+function FlurioreLib:SetNotifyMax(max)
+	local n = tonumber(max)
+	if not n then return false end
+	NotifyState.MaxVisible = math.max(1, math.floor(n))
+	return true
+end
+
+function FlurioreLib:GetNotifyMax()
+	return NotifyState.MaxVisible
+end
+
+function FlurioreLib:ClearNotifies()
+	local layout = CoreGui:FindFirstChild("NotifyGui") and CoreGui.NotifyGui:FindFirstChild("NotifyLayout")
+	if not layout then return true end
+	for _, child in ipairs(layout:GetChildren()) do
+		if child.Name == "NotifyFrame" then
+			child:Destroy()
+		end
+	end
+	NotifyState.Active = {}
+	return true
+end
+
 function FlurioreLib:MakeNotify(NotifyConfig)
 	local NotifyConfig = NotifyConfig or {}
 	NotifyConfig.Title = NotifyConfig.Title or "Hirimi Hub"
@@ -148,104 +244,100 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 	NotifyConfig.Time = math.max(0.05, tonumber(NotifyConfig.Time) or 0.5)
 	NotifyConfig.Delay = math.max(0, tonumber(NotifyConfig.Delay) or 5)
 	local NotifyFunction = {}
-		if not CoreGui:FindFirstChild("NotifyGui") then
-			local NotifyGui = Instance.new("ScreenGui");
-			NotifyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-			NotifyGui.Name = "NotifyGui"
-			NotifyGui.Parent = CoreGui
-		end
-		if not CoreGui.NotifyGui:FindFirstChild("NotifyLayout") then
-			local NotifyLayout = Instance.new("Frame");
-			NotifyLayout.AnchorPoint = Vector2.new(1, 1)
-			NotifyLayout.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			NotifyLayout.BackgroundTransparency = 0.9990000128746033
-			NotifyLayout.BorderColor3 = Color3.fromRGB(0, 0, 0)
-			NotifyLayout.BorderSizePixel = 0
-			NotifyLayout.Position = UDim2.new(1, -30, 1, -30)
-			NotifyLayout.Size = UDim2.new(0, 320, 1, 0)
-			NotifyLayout.Name = "NotifyLayout"
-			NotifyLayout.Parent = CoreGui.NotifyGui
-			local Count = 0
-			CoreGui.NotifyGui.NotifyLayout.ChildRemoved:Connect(function()
-				Count = 0
-				for i, v in CoreGui.NotifyGui.NotifyLayout:GetChildren() do
-					TweenService:Create(
-						v,
-						TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-						{Position = UDim2.new(0, 0, 1, -((v.Size.Y.Offset + 12)*Count))}
-					):Play()
-					Count = Count + 1
-				end
-			end)
-		end
-		local NotifyPosHeigh = 0
-		for i, v in CoreGui.NotifyGui.NotifyLayout:GetChildren() do
-			NotifyPosHeigh = -(v.Position.Y.Offset) + v.Size.Y.Offset + 12
-		end
-		local NotifyFrame = Instance.new("Frame");
-		local NotifyFrameReal = Instance.new("Frame");
-		local UICorner = Instance.new("UICorner");
-		local DropShadowHolder = Instance.new("Frame");
-		local DropShadow = Instance.new("ImageLabel");
-		local Top = Instance.new("Frame");
-		local TextLabel = Instance.new("TextLabel");
-		local UIStroke = Instance.new("UIStroke");
-		local UICorner1 = Instance.new("UICorner");
-		local TextLabel1 = Instance.new("TextLabel");
-		local UIStroke1 = Instance.new("UIStroke");
-		local Close = Instance.new("TextButton");
-		local ImageLabel = Instance.new("ImageLabel");
-		local TextLabel2 = Instance.new("TextLabel");
+	local layout, cfg = ensureNotifyLayout()
+	local stackDir = cfg.StackDir
 
-		NotifyFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		NotifyFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		NotifyFrame.BorderSizePixel = 0
-		NotifyFrame.Size = UDim2.new(1, 0, 0, 150)
-		NotifyFrame.Name = "NotifyFrame"
-		NotifyFrame.BackgroundTransparency = 1
-		NotifyFrame.Parent = CoreGui.NotifyGui.NotifyLayout
+	local visible = 0
+	for _, child in ipairs(layout:GetChildren()) do
+		if child.Name == "NotifyFrame" then
+			visible = visible + 1
+		end
+	end
+	if visible >= NotifyState.MaxVisible then
+		for _, child in ipairs(layout:GetChildren()) do
+			if child.Name == "NotifyFrame" then
+				child:Destroy()
+				break
+			end
+		end
+	end
+
+	local NotifyPosHeigh = 0
+	for _, v in ipairs(layout:GetChildren()) do
+		if v.Name == "NotifyFrame" then
+			NotifyPosHeigh = NotifyPosHeigh + v.Size.Y.Offset + 12
+		end
+	end
+
+	local NotifyFrame = Instance.new("Frame")
+	local NotifyFrameReal = Instance.new("Frame")
+	local UICorner = Instance.new("UICorner")
+	local DropShadowHolder = Instance.new("Frame")
+	local DropShadow = Instance.new("ImageLabel")
+	local Top = Instance.new("Frame")
+	local TextLabel = Instance.new("TextLabel")
+	local UIStroke = Instance.new("UIStroke")
+	local UICorner1 = Instance.new("UICorner")
+	local TextLabel1 = Instance.new("TextLabel")
+	local UIStroke1 = Instance.new("UIStroke")
+	local Close = Instance.new("TextButton")
+	local ImageLabel = Instance.new("ImageLabel")
+	local TextLabel2 = Instance.new("TextLabel")
+	local Progress = Instance.new("Frame")
+	local ProgressFill = Instance.new("Frame")
+
+	NotifyFrame.BackgroundTransparency = 1
+	NotifyFrame.BorderSizePixel = 0
+	NotifyFrame.Size = UDim2.new(1, 0, 0, 150)
+	NotifyFrame.Name = "NotifyFrame"
+	NotifyFrame.Parent = layout
+	if stackDir < 0 then
 		NotifyFrame.AnchorPoint = Vector2.new(0, 1)
-		NotifyFrame.Position = UDim2.new(0, 0, 1, -(NotifyPosHeigh))
+		NotifyFrame.Position = UDim2.new(0, 0, 1, -NotifyPosHeigh)
+	else
+		NotifyFrame.AnchorPoint = Vector2.new(0, 0)
+		NotifyFrame.Position = UDim2.new(0, 0, 0, NotifyPosHeigh)
+	end
 
-		NotifyFrameReal.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		NotifyFrameReal.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		NotifyFrameReal.BorderSizePixel = 0
-		NotifyFrameReal.Position = UDim2.new(0, 400, 0, 0)
-		NotifyFrameReal.Size = UDim2.new(1, 0, 1, 0)
-		NotifyFrameReal.Name = "NotifyFrameReal"
-		NotifyFrameReal.Parent = NotifyFrame
+	NotifyFrameReal.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	NotifyFrameReal.BorderSizePixel = 0
+	NotifyFrameReal.BackgroundTransparency = 0.15
+	NotifyFrameReal.Position = UDim2.new(0, stackDir < 0 and 400 or -400, 0, 0)
+	NotifyFrameReal.Size = UDim2.new(1, 0, 1, 0)
+	NotifyFrameReal.Name = "NotifyFrameReal"
+	NotifyFrameReal.Parent = NotifyFrame
 
-		UICorner.Parent = NotifyFrameReal
-		UICorner.CornerRadius = UDim.new(0, 8)
+	UICorner.Parent = NotifyFrameReal
+	UICorner.CornerRadius = UDim.new(0, 8)
 
-		DropShadowHolder.BackgroundTransparency = 1
-		DropShadowHolder.BorderSizePixel = 0
-		DropShadowHolder.Size = UDim2.new(1, 0, 1, 0)
-		DropShadowHolder.ZIndex = 0
-		DropShadowHolder.Name = "DropShadowHolder"
-		DropShadowHolder.Parent = NotifyFrameReal
+	DropShadowHolder.BackgroundTransparency = 1
+	DropShadowHolder.BorderSizePixel = 0
+	DropShadowHolder.Size = UDim2.new(1, 0, 1, 0)
+	DropShadowHolder.ZIndex = 0
+	DropShadowHolder.Name = "DropShadowHolder"
+	DropShadowHolder.Parent = NotifyFrameReal
 
-		DropShadow.Image = "rbxassetid://6015897843"
-		DropShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-		DropShadow.ImageTransparency = 0.5
-		DropShadow.ScaleType = Enum.ScaleType.Slice
-		DropShadow.SliceCenter = Rect.new(49, 49, 450, 450)
-		DropShadow.AnchorPoint = Vector2.new(0.5, 0.5)
-		DropShadow.BackgroundTransparency = 1
-		DropShadow.BorderSizePixel = 0
-		DropShadow.Position = UDim2.new(0.5, 0, 0.5, 0)
-		DropShadow.Size = UDim2.new(1, 47, 1, 47)
-		DropShadow.ZIndex = 0
-		DropShadow.Name = "DropShadow"
-		DropShadow.Parent = DropShadowHolder
+	DropShadow.Image = "rbxassetid://6015897843"
+	DropShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+	DropShadow.ImageTransparency = 0.5
+	DropShadow.ScaleType = Enum.ScaleType.Slice
+	DropShadow.SliceCenter = Rect.new(49, 49, 450, 450)
+	DropShadow.AnchorPoint = Vector2.new(0.5, 0.5)
+	DropShadow.BackgroundTransparency = 1
+	DropShadow.BorderSizePixel = 0
+	DropShadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+	DropShadow.Size = UDim2.new(1, 47, 1, 47)
+	DropShadow.ZIndex = 0
+	DropShadow.Name = "DropShadow"
+	DropShadow.Parent = DropShadowHolder
 
-		Top.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-		Top.BackgroundTransparency = 0.9990000128746033
-		Top.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		Top.BorderSizePixel = 0
-		Top.Size = UDim2.new(1, 0, 0, 36)
-		Top.Name = "Top"
-		Top.Parent = NotifyFrameReal
+	Top.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	Top.BackgroundTransparency = 0.9990000128746033
+	Top.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	Top.BorderSizePixel = 0
+	Top.Size = UDim2.new(1, 0, 0, 36)
+	Top.Name = "Top"
+	Top.Parent = NotifyFrameReal
 
 		TextLabel.Font = Enum.Font.GothamBold
 		TextLabel.Text = NotifyConfig.Title
@@ -329,38 +421,65 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 		local notifyTextBounds = TextService:GetTextSize(tostring(NotifyConfig.Content), TextLabel2.TextSize, TextLabel2.Font, Vector2.new(notifyTextWidth, 10000))
 		local notifyContentHeight = math.max(13, math.ceil(notifyTextBounds.Y))
 		TextLabel2.Size = UDim2.new(1, -20, 0, notifyContentHeight)
-		if notifyContentHeight < 27 then
-			NotifyFrame.Size = UDim2.new(1, 0, 0, 65)
-		else
-			NotifyFrame.Size = UDim2.new(1, 0, 0, notifyContentHeight + 40)
-		end
-		local waitbruh = false
+		local frameHeight = notifyContentHeight < 27 and 65 or (notifyContentHeight + 40)
+		NotifyFrame.Size = UDim2.new(1, 0, 0, frameHeight)
+
+		Progress.Name = "Progress"
+		Progress.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+		Progress.BorderSizePixel = 0
+		Progress.AnchorPoint = Vector2.new(0, 1)
+		Progress.Position = UDim2.new(0, 8, 1, -6)
+		Progress.Size = UDim2.new(1, -16, 0, 3)
+		Progress.Parent = NotifyFrameReal
+		local ProgressCorner = Instance.new("UICorner")
+		ProgressCorner.CornerRadius = UDim.new(1, 0)
+		ProgressCorner.Parent = Progress
+		ProgressFill.Name = "ProgressFill"
+		ProgressFill.BackgroundColor3 = NotifyConfig.Color
+		ProgressFill.BorderSizePixel = 0
+		ProgressFill.Size = UDim2.new(1, 0, 1, 0)
+		ProgressFill.Parent = Progress
+		local ProgressFillCorner = Instance.new("UICorner")
+		ProgressFillCorner.CornerRadius = UDim.new(1, 0)
+		ProgressFillCorner.Parent = ProgressFill
+
+		local closing = false
 		function NotifyFunction:Close()
-			if waitbruh then
-				return false
-			end
-			waitbruh = true
-			TweenService:Create(
-				NotifyFrameReal,
-				TweenInfo.new(NotifyConfig.Time, Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
-				{Position = UDim2.new(0, 400, 0, 0)}
-			):Play()
-			task.wait(NotifyConfig.Time / 1.2)
-			NotifyFrame:Destroy()
+			if closing then return false end
+			closing = true
+			local slideX = (NotifyAnchors[NotifyState.Position] or NotifyAnchors.BottomRight).StackDir < 0 and 400 or -400
+			local outInfo = TweenInfo.new(NotifyConfig.Time, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			TweenService:Create(NotifyFrameReal, outInfo, {
+				Position = UDim2.new(0, slideX, 0, 0),
+				BackgroundTransparency = 1,
+			}):Play()
+			TweenService:Create(DropShadow, outInfo, {ImageTransparency = 1}):Play()
+			task.delay(NotifyConfig.Time, function()
+				if NotifyFrame.Parent then
+					NotifyFrame:Destroy()
+				end
+				restackNotifies()
+			end)
+			return true
 		end
 		Close.Activated:Connect(function()
 			NotifyFunction:Close()
 		end)
-	TweenService:Create(
-		NotifyFrameReal,
-		TweenInfo.new(NotifyConfig.Time, Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
-		{Position = UDim2.new(0, 0, 0, 0)}
-	):Play()
-	task.spawn(function()
-		task.wait(NotifyConfig.Delay)
-		NotifyFunction:Close()
-	end)
-	return NotifyFunction
+		local inInfo = TweenInfo.new(NotifyConfig.Time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(NotifyFrameReal, inInfo, {
+			Position = UDim2.new(0, 0, 0, 0),
+			BackgroundTransparency = 0.05,
+		}):Play()
+		if NotifyConfig.Delay > 0 then
+			TweenService:Create(ProgressFill, TweenInfo.new(NotifyConfig.Delay, Enum.EasingStyle.Linear), {
+				Size = UDim2.new(0, 0, 1, 0),
+			}):Play()
+			task.delay(NotifyConfig.Delay, function()
+				NotifyFunction:Close()
+			end)
+		end
+		restackNotifies()
+		return NotifyFunction
 end
 function FlurioreLib:MakeGui(GuiConfig)
 	local GuiConfig = GuiConfig or {}
@@ -389,7 +508,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	end
 	GuiConfig.Color = Theme.Accent
 	local lastAccent = GuiConfig.Color
-	local textScaleValue = math.clamp(tonumber(GuiConfig.TextScale) or 1, 0.7, 1.5)
+	local textScaleValue = math.clamp(tonumber(GuiConfig.TextScale) or 0.85, 0.7, 1.5)
 	local uiScaleValue = math.clamp(tonumber(GuiConfig.UIScale) or 0.9, 0.75, 1.2)
 	local textBaseSizes = setmetatable({}, {__mode = "k"})
 	local GuiFunc = {}
@@ -467,7 +586,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 		elseif object:IsA("GuiObject") then
 			if object.BackgroundColor3 == lastAccent or role == "AccentBackground" then
 				object.BackgroundColor3 = Theme.Accent
-			elseif role == "Background" or object.Name == "Main" or object.Name == "SettingsPanel" then
+			elseif role == "Background" or object.Name == "Main" then
 				object.BackgroundColor3 = Theme.Background
 			elseif role == "Surface" or surfaceNames[object.Name] then
 				object.BackgroundColor3 = Theme.Surface
@@ -692,100 +811,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 	local IsMinimized = false
 	local SetMinimized
-	local SettingsButton = Instance.new("TextButton")
-	SettingsButton.Name = "SettingsButton"
-	SettingsButton:SetAttribute("FlurThemeRole", "Text")
-	SettingsButton.AnchorPoint = Vector2.new(1, 0.5)
-	SettingsButton.Position = UDim2.new(1, -112, 0.5, 0)
-	SettingsButton.Size = UDim2.new(0, 25, 0, 25)
-	SettingsButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	SettingsButton.BackgroundTransparency = 0.999
-	SettingsButton.BorderSizePixel = 0
-	SettingsButton.Text = "⚙"
-	SettingsButton.Font = Enum.Font.GothamBold
-	SettingsButton.TextSize = 16
-	SettingsButton.TextColor3 = Color3.fromRGB(235, 235, 235)
-	SettingsButton.AutoButtonColor = false
-	SettingsButton.ZIndex = 21
-	SettingsButton.Parent = Top
-
-	local SettingsPanel = Instance.new("Frame")
-	SettingsPanel.Name = "SettingsPanel"
-	SettingsPanel:SetAttribute("FlurThemeRole", "Background")
-	SettingsPanel.AnchorPoint = Vector2.new(1, 0)
-	SettingsPanel.Position = UDim2.new(1, -8, 0, 44)
-	SettingsPanel.Size = UDim2.new(0, 230, 0, 132)
-	SettingsPanel.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
-	SettingsPanel.BackgroundTransparency = 0.04
-	SettingsPanel.BorderSizePixel = 0
-	SettingsPanel.Visible = false
-	SettingsPanel.ZIndex = 20
-	SettingsPanel.Parent = Main
-	local SettingsCorner = Instance.new("UICorner")
-	SettingsCorner.CornerRadius = UDim.new(0, 7)
-	SettingsCorner.Parent = SettingsPanel
-	local SettingsStroke = Instance.new("UIStroke")
-	SettingsStroke.Color = Theme.Border
-	SettingsStroke.Thickness = 1
-	SettingsStroke.Parent = SettingsPanel
-
-	local function makeSettingsLabel(name, text, position, size, textSize, alignment)
-		local label = Instance.new("TextLabel")
-		label.Name = name
-		label:SetAttribute("FlurThemeRole", "Text")
-		label.Text = text
-		label.Position = position
-		label.Size = size
-		label.BackgroundTransparency = 1
-		label.BorderSizePixel = 0
-		label.Font = Enum.Font.Gotham
-		label.TextSize = textSize or 11
-		label.TextColor3 = Theme.Text
-		label.TextXAlignment = alignment or Enum.TextXAlignment.Left
-		label.ZIndex = 21
-		label.Parent = SettingsPanel
-		return label
-	end
-	local function makeSettingsButton(name, text, position, size)
-		local button = Instance.new("TextButton")
-		button.Name = name
-		button:SetAttribute("FlurThemeRole", "Surface")
-		button.Text = text
-		button.Position = position
-		button.Size = size
-		button.BackgroundColor3 = Theme.Surface
-		button.BackgroundTransparency = 0.86
-		button.BorderSizePixel = 0
-		button.Font = Enum.Font.GothamBold
-		button.TextSize = 12
-		button.TextColor3 = Theme.Text
-		button.AutoButtonColor = true
-		button.ZIndex = 21
-		button.Parent = SettingsPanel
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 4)
-		corner.Parent = button
-		return button
-	end
-	makeSettingsLabel("SettingsTitle", "Display settings", UDim2.new(0, 10, 0, 7), UDim2.new(1, -20, 0, 18), 12)
-	local TextScaleLabel = makeSettingsLabel("TextScaleLabel", "Text size: 100%", UDim2.new(0, 10, 0, 33), UDim2.new(0, 96, 0, 20), 11)
-	local TextScaleMinus = makeSettingsButton("TextScaleMinus", "−", UDim2.new(0, 111, 0, 30), UDim2.new(0, 22, 0, 23))
-	local TextScaleValueLabel = makeSettingsLabel("TextScaleValueLabel", "100%", UDim2.new(0, 137, 0, 32), UDim2.new(0, 48, 0, 20), 11, Enum.TextXAlignment.Center)
-	local TextScalePlus = makeSettingsButton("TextScalePlus", "+", UDim2.new(0, 190, 0, 30), UDim2.new(0, 22, 0, 23))
-	local UIScaleLabel = makeSettingsLabel("UIScaleLabel", "UI size", UDim2.new(0, 10, 0, 63), UDim2.new(0, 96, 0, 20), 11)
-	local UIScaleMinus = makeSettingsButton("UIScaleMinus", "−", UDim2.new(0, 111, 0, 60), UDim2.new(0, 22, 0, 23))
-	local UIScaleValueLabel = makeSettingsLabel("UIScaleValueLabel", "90%", UDim2.new(0, 137, 0, 62), UDim2.new(0, 48, 0, 20), 11, Enum.TextXAlignment.Center)
-	local UIScalePlus = makeSettingsButton("UIScalePlus", "+", UDim2.new(0, 190, 0, 60), UDim2.new(0, 22, 0, 23))
-	local ResetSettingsButton = makeSettingsButton("ResetSettingsButton", "Reset", UDim2.new(1, -72, 1, -31), UDim2.new(0, 62, 0, 23))
-	SettingsButton.Activated:Connect(function()
-		if IsMinimized and SetMinimized then
-			SetMinimized(false)
-		end
-		SettingsPanel.Visible = not SettingsPanel.Visible
-		if SettingsPanel.Visible then
-			TweenService:Create(SettingsPanel, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.04}):Play()
-		end
-	end)
+	local minimizeToken = 0
 
 	LayersTab.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	LayersTab.BackgroundTransparency = 0.9990000128746033
@@ -831,9 +857,38 @@ function FlurioreLib:MakeGui(GuiConfig)
 	NameTab.BackgroundTransparency = 0.9990000128746033
 	NameTab.BorderColor3 = Color3.fromRGB(0, 0, 0)
 	NameTab.BorderSizePixel = 0
-	NameTab.Size = UDim2.new(1, 0, 0, 30)
+	NameTab.Size = UDim2.new(1, 0, 0, 24)
 	NameTab.Name = "NameTab"
 	NameTab.Parent = Layers
+
+	local SearchBox = Instance.new("TextBox")
+	SearchBox.Name = "SearchBox"
+	SearchBox:SetAttribute("FlurThemeRole", "MutedText")
+	SearchBox.PlaceholderText = "Search..."
+	SearchBox.Text = ""
+	SearchBox.Font = Enum.Font.Gotham
+	SearchBox.TextSize = 12
+	SearchBox.TextColor3 = Color3.fromRGB(235, 235, 235)
+	SearchBox.PlaceholderColor3 = Color3.fromRGB(140, 140, 140)
+	SearchBox.TextXAlignment = Enum.TextXAlignment.Left
+	SearchBox.ClearTextOnFocus = false
+	SearchBox.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	SearchBox.BackgroundTransparency = 0.92
+	SearchBox.BorderSizePixel = 0
+	SearchBox.Position = UDim2.new(0, 0, 0, 26)
+	SearchBox.Size = UDim2.new(1, 0, 0, 22)
+	SearchBox.Parent = Layers
+	local SearchCorner = Instance.new("UICorner")
+	SearchCorner.CornerRadius = UDim.new(0, 4)
+	SearchCorner.Parent = SearchBox
+	local SearchPad = Instance.new("UIPadding")
+	SearchPad.PaddingLeft = UDim.new(0, 8)
+	SearchPad.Parent = SearchBox
+	SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+		if GuiFunc.SetSearch then
+			GuiFunc:SetSearch(SearchBox.Text)
+		end
+	end)
 
 	LayersReal.AnchorPoint = Vector2.new(0, 1)
 	LayersReal.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -842,7 +897,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	LayersReal.BorderSizePixel = 0
 	LayersReal.ClipsDescendants = true
 	LayersReal.Position = UDim2.new(0, 0, 1, 0)
-	LayersReal.Size = UDim2.new(1, 0, 1, -33)
+	LayersReal.Size = UDim2.new(1, 0, 1, -52)
 	LayersReal.Name = "LayersReal"
 	LayersReal.Parent = Layers
 
@@ -973,13 +1028,6 @@ function FlurioreLib:MakeGui(GuiConfig)
 				object.TextSize = math.max(8, math.floor(textBaseSizes[object] * textScaleValue + 0.5))
 			end
 		end
-		TextScaleValueLabel.Text = tostring(math.floor(textScaleValue * 100 + 0.5)) .. "%"
-	end
-
-	local function refreshScaleLabels()
-		TextScaleValueLabel.Text = tostring(math.floor(textScaleValue * 100 + 0.5)) .. "%"
-		TextScaleLabel.Text = "Text size"
-		UIScaleValueLabel.Text = tostring(math.floor(uiScaleValue * 100 + 0.5)) .. "%"
 	end
 
 	function GuiFunc:SetTextScale(value)
@@ -987,7 +1035,6 @@ function FlurioreLib:MakeGui(GuiConfig)
 		if not nextValue then return false end
 		textScaleValue = math.clamp(nextValue, TextScaleMin, TextScaleMax)
 		refreshTextScale()
-		refreshScaleLabels()
 		return true
 	end
 
@@ -996,14 +1043,30 @@ function FlurioreLib:MakeGui(GuiConfig)
 		if not nextValue then return false end
 		uiScaleValue = math.clamp(nextValue, UIScaleMin, UIScaleMax)
 		UIScaleObject.Scale = uiScaleValue
-		refreshScaleLabels()
 		return true
+	end
+
+	function GuiFunc:GetTextScale()
+		return textScaleValue
+	end
+
+	function GuiFunc:GetUIScale()
+		return uiScaleValue
+	end
+
+	function GuiFunc:GetTheme()
+		return {
+			Accent = Theme.Accent,
+			Background = Theme.Background,
+			Surface = Theme.Surface,
+			Text = Theme.Text,
+			MutedText = Theme.MutedText,
+			Border = Theme.Border,
+		}
 	end
 
 	function GuiFunc:SetTheme(ThemeConfig)
 		if type(ThemeConfig) ~= "table" then return false end
-		-- Keep lastAccent unchanged while applying so existing objects using the old
-		-- accent can be detected and replaced with the new palette color.
 		for key, value in pairs(ThemeConfig) do
 			if Theme[key] ~= nil and typeof(value) == "Color3" then
 				Theme[key] = value
@@ -1014,29 +1077,294 @@ function FlurioreLib:MakeGui(GuiConfig)
 			applyThemeToObject(object)
 		end
 		lastAccent = Theme.Accent
-		SettingsStroke.Color = Theme.Border
 		return true
+	end
+
+	function GuiFunc:SetAccent(color)
+		if typeof(color) ~= "Color3" then return false end
+		return GuiFunc:SetTheme({Accent = color})
+	end
+
+	local windowOpacity = 0.1
+	function GuiFunc:SetOpacity(value)
+		local n = tonumber(value)
+		if not n then return false end
+		windowOpacity = math.clamp(n, 0, 0.95)
+		Main.BackgroundTransparency = windowOpacity
+		return true
+	end
+
+	function GuiFunc:GetOpacity()
+		return windowOpacity
+	end
+
+	local flagStore = {}
+	local searchIndex = {}
+	local keyBinds = {}
+	local toggleKey = Enum.KeyCode.RightShift
+
+	function GuiFunc:RegisterFlag(flag, getFn, setFn)
+		if type(flag) ~= "string" or flag == "" then return false end
+		if type(getFn) ~= "function" or type(setFn) ~= "function" then return false end
+		flagStore[flag] = {Get = getFn, Set = setFn}
+		return true
+	end
+
+	function GuiFunc:GetFlags()
+		local out = {}
+		for flag, handlers in pairs(flagStore) do
+			local ok, value = pcall(handlers.Get)
+			if ok then out[flag] = value end
+		end
+		return out
+	end
+
+	function GuiFunc:SetFlags(data)
+		if type(data) ~= "table" then return false end
+		for flag, value in pairs(data) do
+			local handlers = flagStore[flag]
+			if handlers then
+				pcall(handlers.Set, value)
+			end
+		end
+		return true
+	end
+
+	local function ensureFolder(path)
+		if isfolder and not isfolder(path) and makefolder then
+			makefolder(path)
+		end
+	end
+
+	function GuiFunc:SaveConfig(folder, name)
+		if type(folder) ~= "string" or type(name) ~= "string" then return false, "folder and name must be strings" end
+		if not writefile then return false, "writefile unavailable" end
+		ensureFolder(folder)
+		local payload = {
+			TextScale = textScaleValue,
+			UIScale = uiScaleValue,
+			Theme = {
+				Accent = {Theme.Accent.R, Theme.Accent.G, Theme.Accent.B},
+				Background = {Theme.Background.R, Theme.Background.G, Theme.Background.B},
+				Surface = {Theme.Surface.R, Theme.Surface.G, Theme.Surface.B},
+				Text = {Theme.Text.R, Theme.Text.G, Theme.Text.B},
+				MutedText = {Theme.MutedText.R, Theme.MutedText.G, Theme.MutedText.B},
+				Border = {Theme.Border.R, Theme.Border.G, Theme.Border.B},
+			},
+			Flags = GuiFunc:GetFlags(),
+		}
+		local ok, encoded = pcall(function()
+			return HttpService:JSONEncode(payload)
+		end)
+		if not ok then return false, encoded end
+		local path = folder .. "/" .. name .. ".json"
+		local writeOk, writeErr = pcall(writefile, path, encoded)
+		if not writeOk then return false, writeErr end
+		return true, path
+	end
+
+	local function colorFromArray(arr, fallback)
+		if type(arr) == "table" and #arr >= 3 then
+			return Color3.new(arr[1], arr[2], arr[3])
+		end
+		return fallback
+	end
+
+	function GuiFunc:LoadConfig(folder, name)
+		if type(folder) ~= "string" or type(name) ~= "string" then return false, "folder and name must be strings" end
+		if not readfile then return false, "readfile unavailable" end
+		local path = folder .. "/" .. name .. ".json"
+		local ok, raw = pcall(readfile, path)
+		if not ok then return false, raw end
+		local decodeOk, data = pcall(function()
+			return HttpService:JSONDecode(raw)
+		end)
+		if not decodeOk or type(data) ~= "table" then return false, data end
+		if data.TextScale then GuiFunc:SetTextScale(data.TextScale) end
+		if data.UIScale then GuiFunc:SetUIScale(data.UIScale) end
+		if type(data.Theme) == "table" then
+			GuiFunc:SetTheme({
+				Accent = colorFromArray(data.Theme.Accent, Theme.Accent),
+				Background = colorFromArray(data.Theme.Background, Theme.Background),
+				Surface = colorFromArray(data.Theme.Surface, Theme.Surface),
+				Text = colorFromArray(data.Theme.Text, Theme.Text),
+				MutedText = colorFromArray(data.Theme.MutedText, Theme.MutedText),
+				Border = colorFromArray(data.Theme.Border, Theme.Border),
+			})
+		end
+		if type(data.Flags) == "table" then
+			GuiFunc:SetFlags(data.Flags)
+		end
+		return true, path
+	end
+
+	function GuiFunc:ExportConfig()
+		local payload = {
+			TextScale = textScaleValue,
+			UIScale = uiScaleValue,
+			Theme = GuiFunc:GetTheme(),
+			Flags = GuiFunc:GetFlags(),
+		}
+		local ok, encoded = pcall(function()
+			return HttpService:JSONEncode({
+				TextScale = payload.TextScale,
+				UIScale = payload.UIScale,
+				Theme = {
+					Accent = {Theme.Accent.R, Theme.Accent.G, Theme.Accent.B},
+					Background = {Theme.Background.R, Theme.Background.G, Theme.Background.B},
+					Surface = {Theme.Surface.R, Theme.Surface.G, Theme.Surface.B},
+					Text = {Theme.Text.R, Theme.Text.G, Theme.Text.B},
+					MutedText = {Theme.MutedText.R, Theme.MutedText.G, Theme.MutedText.B},
+					Border = {Theme.Border.R, Theme.Border.G, Theme.Border.B},
+				},
+				Flags = payload.Flags,
+			})
+		end)
+		if not ok then return nil, encoded end
+		return encoded
+	end
+
+	function GuiFunc:ImportConfig(json)
+		if type(json) ~= "string" then return false, "json must be string" end
+		local ok, data = pcall(function()
+			return HttpService:JSONDecode(json)
+		end)
+		if not ok or type(data) ~= "table" then return false, data end
+		if data.TextScale then GuiFunc:SetTextScale(data.TextScale) end
+		if data.UIScale then GuiFunc:SetUIScale(data.UIScale) end
+		if type(data.Theme) == "table" then
+			GuiFunc:SetTheme({
+				Accent = colorFromArray(data.Theme.Accent, Theme.Accent),
+				Background = colorFromArray(data.Theme.Background, Theme.Background),
+				Surface = colorFromArray(data.Theme.Surface, Theme.Surface),
+				Text = colorFromArray(data.Theme.Text, Theme.Text),
+				MutedText = colorFromArray(data.Theme.MutedText, Theme.MutedText),
+				Border = colorFromArray(data.Theme.Border, Theme.Border),
+			})
+		end
+		if type(data.Flags) == "table" then
+			GuiFunc:SetFlags(data.Flags)
+		end
+		return true
+	end
+
+	function GuiFunc:ListConfigs(folder)
+		if type(folder) ~= "string" then return {} end
+		local names = {}
+		if listfiles then
+			local ok, files = pcall(listfiles, folder)
+			if ok and type(files) == "table" then
+				for _, path in ipairs(files) do
+					local name = string.match(path, "([^/\\]+)%.json$")
+					if name then table.insert(names, name) end
+				end
+			end
+		end
+		return names
+	end
+
+	function GuiFunc:DeleteConfig(folder, name)
+		if type(folder) ~= "string" or type(name) ~= "string" then return false, "folder and name must be strings" end
+		if not delfile then return false, "delfile unavailable" end
+		local path = folder .. "/" .. name .. ".json"
+		local ok, err = pcall(delfile, path)
+		if not ok then return false, err end
+		return true, path
+	end
+
+	function GuiFunc:RenameConfig(folder, oldName, newName)
+		if type(folder) ~= "string" or type(oldName) ~= "string" or type(newName) ~= "string" then
+			return false, "folder, oldName, newName must be strings"
+		end
+		if not readfile or not writefile then return false, "filesystem unavailable" end
+		local oldPath = folder .. "/" .. oldName .. ".json"
+		local newPath = folder .. "/" .. newName .. ".json"
+		local ok, raw = pcall(readfile, oldPath)
+		if not ok then return false, raw end
+		local writeOk, writeErr = pcall(writefile, newPath, raw)
+		if not writeOk then return false, writeErr end
+		if delfile then pcall(delfile, oldPath) end
+		return true, newPath
+	end
+
+	function GuiFunc:SetSearch(query)
+		local q = string.lower(tostring(query or ""))
+		for _, entry in ipairs(searchIndex) do
+			if entry.frame and entry.frame.Parent then
+				if q == "" then
+					entry.frame.Visible = true
+				else
+					local title = string.lower(tostring(entry.title or ""))
+					local content = string.lower(tostring(entry.content or ""))
+					entry.frame.Visible = string.find(title, q, 1, true) ~= nil or string.find(content, q, 1, true) ~= nil
+				end
+			end
+		end
+		return true
+	end
+
+	function GuiFunc:ClearSearch()
+		return GuiFunc:SetSearch("")
+	end
+
+	function GuiFunc:SetToggleKey(keyCode)
+		if typeof(keyCode) ~= "EnumItem" then return false end
+		toggleKey = keyCode
+		return true
+	end
+
+	function GuiFunc:GetToggleKey()
+		return toggleKey
+	end
+
+	function GuiFunc:BindKey(id, keyCode, callback)
+		if type(id) ~= "string" or id == "" then return false end
+		if typeof(keyCode) ~= "EnumItem" then return false end
+		if type(callback) ~= "function" then return false end
+		keyBinds[id] = {Key = keyCode, Callback = callback}
+		return true
+	end
+
+	function GuiFunc:UnbindKey(id)
+		if type(id) ~= "string" then return false end
+		keyBinds[id] = nil
+		return true
+	end
+
+	function GuiFunc:GetBinds()
+		local out = {}
+		for id, bind in pairs(keyBinds) do
+			out[id] = bind.Key
+		end
+		return out
 	end
 
 	SetMinimized = function(minimized)
 		if IsMinimized == minimized then return end
 		IsMinimized = minimized
+		minimizeToken = minimizeToken + 1
+		local token = minimizeToken
+		local tweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 		if minimized then
 			expandedSize = DropShadowHolder.Size
-			SettingsPanel.Visible = false
-			TweenService:Create(DropShadowHolder, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+			LayersTabExpandedPosition = LayersTab.Position
+			LayersExpandedPosition = Layers.Position
+			Layers.Visible = false
+			LayersTab.Visible = false
+			local sizeTween = TweenService:Create(DropShadowHolder, tweenInfo, {
 				Size = UDim2.new(expandedSize.X.Scale, expandedSize.X.Offset, 0, 38)
-			}):Play()
-			TweenService:Create(LayersTab, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-				Position = UDim2.new(LayersTabExpandedPosition.X.Scale, LayersTabExpandedPosition.X.Offset, LayersTabExpandedPosition.Y.Scale, LayersTabExpandedPosition.Y.Offset - 350)
-			}):Play()
-			TweenService:Create(Layers, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
-				Position = UDim2.new(LayersExpandedPosition.X.Scale, LayersExpandedPosition.X.Offset, LayersExpandedPosition.Y.Scale, LayersExpandedPosition.Y.Offset - 350)
-			}):Play()
+			})
+			sizeTween:Play()
 		else
-			TweenService:Create(DropShadowHolder, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Size = expandedSize}):Play()
-			TweenService:Create(LayersTab, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Position = LayersTabExpandedPosition}):Play()
-			TweenService:Create(Layers, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {Position = LayersExpandedPosition}):Play()
+			local sizeTween = TweenService:Create(DropShadowHolder, tweenInfo, {Size = expandedSize})
+			sizeTween:Play()
+			sizeTween.Completed:Connect(function()
+				if token ~= minimizeToken or IsMinimized then return end
+				LayersTab.Position = LayersTabExpandedPosition
+				Layers.Position = LayersExpandedPosition
+				LayersTab.Visible = true
+				Layers.Visible = true
+			end)
 		end
 	end
 
@@ -1062,7 +1390,6 @@ function FlurioreLib:MakeGui(GuiConfig)
 	end)
 	Close.Activated:Connect(function()
 		CircleClick(Close, Mouse.X, Mouse.Y)
-		SettingsPanel.Visible = false
 		DropShadowHolder.Visible = false
 	end)
 	function GuiFunc:ToggleUI()
@@ -1070,20 +1397,16 @@ function FlurioreLib:MakeGui(GuiConfig)
 		return DropShadowHolder.Visible
 	end
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if not gameProcessed and input.KeyCode == Enum.KeyCode.RightShift then
+		if gameProcessed then return end
+		if input.KeyCode == toggleKey then
 			DropShadowHolder.Visible = not DropShadowHolder.Visible
 		end
+		for _, bind in pairs(keyBinds) do
+			if bind.Key == input.KeyCode then
+				task.spawn(bind.Callback)
+			end
+		end
 	end)
-
-	TextScaleMinus.Activated:Connect(function() GuiFunc:SetTextScale(textScaleValue - 0.1) end)
-	TextScalePlus.Activated:Connect(function() GuiFunc:SetTextScale(textScaleValue + 0.1) end)
-	UIScaleMinus.Activated:Connect(function() GuiFunc:SetUIScale(uiScaleValue - 0.05) end)
-	UIScalePlus.Activated:Connect(function() GuiFunc:SetUIScale(uiScaleValue + 0.05) end)
-	ResetSettingsButton.Activated:Connect(function()
-		GuiFunc:SetTextScale(1)
-		GuiFunc:SetUIScale(0.9)
-	end)
-	refreshScaleLabels()
 
 	local CurrentViewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600)
 	local DesiredWidth = math.max(360, 150 + headerTitleTextWidth + headerDescriptionTextWidth)
@@ -1284,10 +1607,29 @@ function FlurioreLib:MakeGui(GuiConfig)
 		TabName.BackgroundTransparency = 0.9990000128746033
 		TabName.BorderColor3 = Color3.fromRGB(0, 0, 0)
 		TabName.BorderSizePixel = 0
-		TabName.Size = UDim2.new(1, 0, 1, 0)
+		TabName.Size = UDim2.new(1, -48, 1, 0)
 		TabName.Position = UDim2.new(0, 30, 0, 0)
 		TabName.Name = "TabName"
 		TabName.Parent = Tab
+
+		local TabBadge = Instance.new("TextLabel")
+		TabBadge.Name = "TabBadge"
+		TabBadge.BackgroundColor3 = GuiConfig.Color
+		TabBadge.BackgroundTransparency = 1
+		TabBadge.BorderSizePixel = 0
+		TabBadge.AnchorPoint = Vector2.new(1, 0.5)
+		TabBadge.Position = UDim2.new(1, -6, 0.5, 0)
+		TabBadge.Size = UDim2.new(0, 18, 0, 14)
+		TabBadge.Font = Enum.Font.GothamBold
+		TabBadge.TextSize = 10
+		TabBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
+		TabBadge.Text = ""
+		TabBadge.Visible = false
+		TabBadge.ZIndex = 5
+		TabBadge.Parent = Tab
+		local TabBadgeCorner = Instance.new("UICorner")
+		TabBadgeCorner.CornerRadius = UDim.new(0, 6)
+		TabBadgeCorner.Parent = TabBadge
 
 		FeatureImg.Image = TabConfig.Icon
 		FeatureImg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -1497,6 +1839,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 			UIListLayout2.SortOrder = Enum.SortOrder.LayoutOrder
 			UIListLayout2.Parent = SectionAdd
 			local OpenSection = true
+			local sectionAnimToken = 0
+			local sectionTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 			local function UpdateSizeScroll()
 				local OffsetY = 0
 				for _, child in ScrolLayers:GetChildren() do
@@ -1506,31 +1850,46 @@ function FlurioreLib:MakeGui(GuiConfig)
 				end
 				ScrolLayers.CanvasSize = UDim2.new(0, 0, 0, OffsetY)
 			end
-			local function UpdateSizeSection()
-				if OpenSection then
-					local SectionSizeYWitdh = 38
-					for i, v in SectionAdd:GetChildren() do
-						if v.Name ~= "UIListLayout" and v.Name ~= "UICorner" then
-							SectionSizeYWitdh = SectionSizeYWitdh + v.Size.Y.Offset + 3
-						end
+			local function measureSectionHeight()
+				local height = 38
+				for _, v in SectionAdd:GetChildren() do
+					if v.Name ~= "UIListLayout" and v.Name ~= "UICorner" and v.Visible then
+						height = height + v.Size.Y.Offset + 3
 					end
-					TweenService:Create(FeatureFrame, TweenInfo.new(0.5), {Rotation = 90}):Play()
-					TweenService:Create(Section, TweenInfo.new(0.5), {Size = UDim2.new(1, 1, 0, SectionSizeYWitdh)}):Play()
-					TweenService:Create(SectionAdd, TweenInfo.new(0.5), {Size = UDim2.new(1, 0, 0, SectionSizeYWitdh - 38)}):Play()
-					TweenService:Create(SectionDecideFrame, TweenInfo.new(0.5), {Size = UDim2.new(1, 0, 0, 2)}):Play()
-					task.wait(0.5)
-					UpdateSizeScroll()
 				end
+				return height
+			end
+			local function UpdateSizeSection()
+				if not OpenSection then return end
+				local SectionSizeYWitdh = measureSectionHeight()
+				SectionAdd.Visible = true
+				TweenService:Create(FeatureFrame, sectionTweenInfo, {Rotation = 90}):Play()
+				TweenService:Create(Section, sectionTweenInfo, {Size = UDim2.new(1, 1, 0, SectionSizeYWitdh)}):Play()
+				TweenService:Create(SectionAdd, sectionTweenInfo, {Size = UDim2.new(1, 0, 0, SectionSizeYWitdh - 38)}):Play()
+				TweenService:Create(SectionDecideFrame, sectionTweenInfo, {Size = UDim2.new(1, 0, 0, 2)}):Play()
+				sectionAnimToken = sectionAnimToken + 1
+				local token = sectionAnimToken
+				task.delay(0.28, function()
+					if token == sectionAnimToken then
+						UpdateSizeScroll()
+					end
+				end)
 			end
 			SectionButton.Activated:Connect(function()
 				CircleClick(SectionButton, Mouse.X, Mouse.Y)
+				sectionAnimToken = sectionAnimToken + 1
+				local token = sectionAnimToken
 				if OpenSection then
-					TweenService:Create(FeatureFrame, TweenInfo.new(0.5), {Rotation = 0}):Play()
-					TweenService:Create(Section, TweenInfo.new(0.5), {Size = UDim2.new(1, 1, 0, 30)}):Play()
-					TweenService:Create(SectionDecideFrame, TweenInfo.new(0.5), {Size = UDim2.new(0, 0, 0, 2)}):Play()
+					SectionAdd.Visible = false
+					TweenService:Create(FeatureFrame, sectionTweenInfo, {Rotation = 0}):Play()
+					TweenService:Create(Section, sectionTweenInfo, {Size = UDim2.new(1, 1, 0, 30)}):Play()
+					TweenService:Create(SectionDecideFrame, sectionTweenInfo, {Size = UDim2.new(0, 0, 0, 2)}):Play()
 					OpenSection = false
-					task.wait(0.5)
-					UpdateSizeScroll()
+					task.delay(0.28, function()
+						if token == sectionAnimToken then
+							UpdateSizeScroll()
+						end
+					end)
 				else
 					OpenSection = true
 					UpdateSizeSection()
@@ -1605,6 +1964,11 @@ function FlurioreLib:MakeGui(GuiConfig)
 					ParagraphContent.Text = tostring(ParagraphConfig.Content)
 					refreshParagraphHeight()
 				end
+				table.insert(searchIndex, {
+					frame = Paragraph,
+					title = ParagraphConfig.Title,
+					content = ParagraphConfig.Content,
+				})
 				CountItem = CountItem + 1
 				return ParagraphFunc
 			end
@@ -1705,6 +2069,11 @@ function FlurioreLib:MakeGui(GuiConfig)
 					CircleClick(ButtonButton, Mouse.X, Mouse.Y)
 					ButtonConfig.Callback()
 				end)
+				table.insert(searchIndex, {
+					frame = Button,
+					title = ButtonConfig.Title,
+					content = ButtonConfig.Content,
+				})
 				CountItem = CountItem + 1
 				return ButtonFunc
 			end
@@ -1869,6 +2238,18 @@ function FlurioreLib:MakeGui(GuiConfig)
 					end
 				end
 				ToggleFunc:Set(ToggleFunc.Value)
+				table.insert(searchIndex, {
+					frame = Toggle,
+					title = ToggleConfig.Title,
+					content = ToggleConfig.Content,
+				})
+				if type(ToggleConfig.Flag) == "string" and ToggleConfig.Flag ~= "" then
+					GuiFunc:RegisterFlag(ToggleConfig.Flag, function()
+						return ToggleFunc.Value
+					end, function(value)
+						ToggleFunc:Set(value)
+					end)
+				end
 				CountItem = CountItem + 1
 				return ToggleFunc
 			end
@@ -2112,6 +2493,18 @@ function FlurioreLib:MakeGui(GuiConfig)
 				end)
 
 				SliderFunc:Set(SliderConfig.Default, true, false)
+				table.insert(searchIndex, {
+					frame = Slider,
+					title = SliderConfig.Title,
+					content = SliderConfig.Content,
+				})
+				if type(SliderConfig.Flag) == "string" and SliderConfig.Flag ~= "" then
+					GuiFunc:RegisterFlag(SliderConfig.Flag, function()
+						return SliderFunc.Value
+					end, function(value)
+						SliderFunc:Set(value, false, false)
+					end)
+				end
 				CountItem = CountItem + 1
 				return SliderFunc
 			end
@@ -2230,6 +2623,18 @@ function FlurioreLib:MakeGui(GuiConfig)
 				InputTextBox.FocusLost:Connect(function()
 					InputFunc:Set(InputTextBox.Text)
 				end)
+				table.insert(searchIndex, {
+					frame = Input,
+					title = InputConfig.Title,
+					content = InputConfig.Content,
+				})
+				if type(InputConfig.Flag) == "string" and InputConfig.Flag ~= "" then
+					GuiFunc:RegisterFlag(InputConfig.Flag, function()
+						return InputFunc.Value
+					end, function(value)
+						InputFunc:Set(value)
+					end)
+				end
 				CountItem = CountItem + 1
 				return InputFunc
 			end
@@ -2576,12 +2981,151 @@ function FlurioreLib:MakeGui(GuiConfig)
 					DropdownFunc:Set(Selecting)
 				end
 				DropdownFunc:Refresh(DropdownFunc.Options, DropdownFunc.Value)
+				table.insert(searchIndex, {
+					frame = Dropdown,
+					title = DropdownConfig.Title,
+					content = DropdownConfig.Content,
+				})
+				if type(DropdownConfig.Flag) == "string" and DropdownConfig.Flag ~= "" then
+					GuiFunc:RegisterFlag(DropdownConfig.Flag, function()
+						return DropdownFunc.Value
+					end, function(value)
+						DropdownFunc:Set(value)
+					end)
+				end
 				CountItem = CountItem + 1
 				CountDropdown = CountDropdown + 1
 				return DropdownFunc
 			end
 			CountSection = CountSection + 1
+			function Items:Open()
+				if not OpenSection then
+					OpenSection = true
+					UpdateSizeSection()
+				end
+				return true
+			end
+			function Items:Close()
+				if OpenSection then
+					sectionAnimToken = sectionAnimToken + 1
+					local token = sectionAnimToken
+					SectionAdd.Visible = false
+					TweenService:Create(FeatureFrame, sectionTweenInfo, {Rotation = 0}):Play()
+					TweenService:Create(Section, sectionTweenInfo, {Size = UDim2.new(1, 1, 0, 30)}):Play()
+					TweenService:Create(SectionDecideFrame, sectionTweenInfo, {Size = UDim2.new(0, 0, 0, 2)}):Play()
+					OpenSection = false
+					task.delay(0.28, function()
+						if token == sectionAnimToken then
+							UpdateSizeScroll()
+						end
+					end)
+				end
+				return true
+			end
+			function Items:IsOpen()
+				return OpenSection
+			end
+			function Items:AddColorPicker(ColorConfig)
+				ColorConfig = ColorConfig or {}
+				ColorConfig.Title = ColorConfig.Title or "Color"
+				ColorConfig.Content = ColorConfig.Content or "Pick a color"
+				ColorConfig.Default = typeof(ColorConfig.Default) == "Color3" and ColorConfig.Default or Theme.Accent
+				ColorConfig.Callback = ColorConfig.Callback or function() end
+				local ColorFunc = {Value = ColorConfig.Default}
+				local Row = Instance.new("Frame")
+				Row.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				Row.BackgroundTransparency = 0.935
+				Row.BorderSizePixel = 0
+				Row.LayoutOrder = CountItem
+				Row.Size = UDim2.new(1, 0, 0, 46)
+				Row.Name = "ColorPicker"
+				Row.Parent = SectionAdd
+				local Corner = Instance.new("UICorner")
+				Corner.CornerRadius = UDim.new(0, 4)
+				Corner.Parent = Row
+				local Title = Instance.new("TextLabel")
+				Title.Font = Enum.Font.GothamBold
+				Title.Text = ColorConfig.Title
+				Title.TextColor3 = Color3.fromRGB(235, 235, 235)
+				Title.TextSize = 13
+				Title.TextXAlignment = Enum.TextXAlignment.Left
+				Title.BackgroundTransparency = 1
+				Title.Position = UDim2.new(0, 10, 0, 6)
+				Title.Size = UDim2.new(1, -70, 0, 14)
+				Title.Parent = Row
+				local Content = Instance.new("TextLabel")
+				Content.Font = Enum.Font.GothamBold
+				Content.Text = ColorConfig.Content
+				Content.TextColor3 = Color3.fromRGB(160, 160, 160)
+				Content.TextSize = 12
+				Content.TextXAlignment = Enum.TextXAlignment.Left
+				Content.BackgroundTransparency = 1
+				Content.Position = UDim2.new(0, 10, 0, 24)
+				Content.Size = UDim2.new(1, -70, 0, 14)
+				Content.Parent = Row
+				local Swatch = Instance.new("TextButton")
+				Swatch.Text = ""
+				Swatch.AutoButtonColor = false
+				Swatch.BackgroundColor3 = ColorConfig.Default
+				Swatch.BorderSizePixel = 0
+				Swatch.AnchorPoint = Vector2.new(1, 0.5)
+				Swatch.Position = UDim2.new(1, -12, 0.5, 0)
+				Swatch.Size = UDim2.new(0, 28, 0, 28)
+				Swatch.Parent = Row
+				local SwatchCorner = Instance.new("UICorner")
+				SwatchCorner.CornerRadius = UDim.new(0, 6)
+				SwatchCorner.Parent = Swatch
+				local Hue = 0
+				local function applyColor(c)
+					ColorFunc.Value = c
+					Swatch.BackgroundColor3 = c
+					ColorConfig.Callback(c)
+				end
+				function ColorFunc:Set(c)
+					if typeof(c) ~= "Color3" then return false end
+					applyColor(c)
+					return true
+				end
+				Swatch.Activated:Connect(function()
+					Hue = (Hue + 0.08) % 1
+					applyColor(Color3.fromHSV(Hue, 0.85, 1))
+				end)
+				table.insert(searchIndex, {
+					frame = Row,
+					title = ColorConfig.Title,
+					content = ColorConfig.Content,
+				})
+				if type(ColorConfig.Flag) == "string" and ColorConfig.Flag ~= "" then
+					GuiFunc:RegisterFlag(ColorConfig.Flag, function()
+						local c = ColorFunc.Value
+						return {c.R, c.G, c.B}
+					end, function(value)
+						if type(value) == "table" and #value >= 3 then
+							ColorFunc:Set(Color3.new(value[1], value[2], value[3]))
+						end
+					end)
+				end
+				CountItem = CountItem + 1
+				return ColorFunc
+			end
 			return Items
+		end
+		function Sections:SetBadge(text)
+			local label = tostring(text or "")
+			if label == "" then
+				TabBadge.Visible = false
+				TabBadge.Text = ""
+				TabBadge.BackgroundTransparency = 1
+			else
+				TabBadge.Text = label
+				TabBadge.Visible = true
+				TabBadge.BackgroundTransparency = 0.15
+				TabBadge.BackgroundColor3 = Theme.Accent
+			end
+			return true
+		end
+		function Sections:ClearBadge()
+			return Sections:SetBadge("")
 		end
 		CountTab = CountTab + 1
 		return Sections

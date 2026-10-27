@@ -32,7 +32,6 @@ end
 
 local FlurioreLib = loadFlurioreLib()
 
--- Notification example: MakeNotify + Close()
 local notification = FlurioreLib:MakeNotify({
     Title = "FlurioreLib",
     Description = "Library loaded",
@@ -42,24 +41,20 @@ local notification = FlurioreLib:MakeNotify({
     Delay = 8,
 })
 
--- Main window example: MakeGui + window methods
 local Window = FlurioreLib:MakeGui({
     NameHub = "FlurioreLib Demo",
     Description = "Public API showcase",
     Color = Color3.fromRGB(255, 0, 255),
     ["Tab Width"] = 120,
-    -- Optional: ["Logo Player"] = "https://example.com/logo.png",
-    -- Optional: ["Name Player"] = "Display name",
 })
 
 local MainTab = Window:CreateTab({
     Name = "Main",
-    Icon = "", -- Optional image URL or Roblox asset string
+    Icon = "",
 })
 
 local MainSection = MainTab:AddSection("Components")
 
--- Paragraph: AddParagraph + Set()
 local Paragraph = MainSection:AddParagraph({
     Title = "Information",
     Content = "This paragraph can be updated while the UI is open.",
@@ -76,7 +71,6 @@ MainSection:AddButton({
     end,
 })
 
--- Button: AddButton + Callback
 MainSection:AddButton({
     Title = "Close notification",
     Content = "Demonstrates the notification handle's Close() method.",
@@ -85,17 +79,16 @@ MainSection:AddButton({
     end,
 })
 
--- Toggle: AddToggle + Set() + Value
 local Toggle = MainSection:AddToggle({
     Title = "Example toggle",
-    Content = "Callback receives a boolean.",
+    Content = "Callback receives a boolean. Flag is optional for SaveConfig.",
     Default = false,
+    Flag = "demo_toggle",
     Callback = function(value)
         print("Toggle value:", value)
     end,
 })
 
--- Slider: AddSlider + Set() + Value
 local Slider = MainSection:AddSlider({
     Title = "Example slider",
     Content = "Choose a number from 0 to 100.",
@@ -103,27 +96,28 @@ local Slider = MainSection:AddSlider({
     Max = 100,
     Default = 50,
     Increment = 1,
+    Flag = "demo_slider",
     Callback = function(value)
         print("Slider released at:", value)
     end,
 })
 
--- Input: AddInput + Set() + Value
 local Input = MainSection:AddInput({
     Title = "Example input",
     Content = "Enter text and press Enter or leave the field.",
+    Flag = "demo_input",
     Callback = function(value)
         print("Input value:", value)
     end,
 })
 
--- Dropdown: AddDropdown + Set/Clear/AddOption/Refresh
 local Dropdown = MainSection:AddDropdown({
     Title = "Example dropdown",
     Content = "Set Multi = true to allow multiple options.",
     Multi = false,
     Options = {"Apple", "Banana", "Orange"},
     Default = {"Apple"},
+    Flag = "demo_dropdown",
     Callback = function(values)
         print("Dropdown values:", table.concat(values, ", "))
     end,
@@ -182,26 +176,26 @@ ToolsSection:AddButton({
 
 ToolsSection:AddButton({
     Title = "Clear dropdown",
-    Content = "Removes all visible options.",
+    Content = "Calls Dropdown:Clear().",
     Callback = function()
         Dropdown:Clear()
     end,
 })
 
 ToolsSection:AddButton({
-    Title = "Toggle window visibility",
-    Content = "Calls Window:ToggleUI(). RightShift is also supported.",
+    Title = "Save config",
+    Content = "Window:SaveConfig('FlurioreDemo', 'main') — needs writefile.",
     Callback = function()
-        Window:ToggleUI()
+        local ok, result = Window:SaveConfig("FlurioreDemo", "main")
+        print("SaveConfig:", ok, result)
     end,
 })
 
 ToolsSection:AddButton({
-    Title = "Destroy window",
-    Content = "Removes the FlurioreLib window.",
+    Title = "Load config",
+    Content = "Window:LoadConfig('FlurioreDemo', 'main') — needs readfile.",
     Callback = function()
-        Window:DestroyGui()
+        local ok, result = Window:LoadConfig("FlurioreDemo", "main")
+        print("LoadConfig:", ok, result)
     end,
 })
-
-print("[FlurioreLib] Loaded. API showcase is ready.")
