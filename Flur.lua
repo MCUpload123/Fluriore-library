@@ -1339,11 +1339,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 		return out
 	end
 
-<<<<<<< HEAD
 	local contentRestPosTab = LayersTab.Position
 	local contentRestPosLayers = Layers.Position
-=======
->>>>>>> afdfcfe3fa1d345b8cb916c8e394ebc539eec148
 	SetMinimized = function(minimized)
 		if IsMinimized == minimized then return end
 		IsMinimized = minimized
@@ -1351,7 +1348,6 @@ function FlurioreLib:MakeGui(GuiConfig)
 		local token = minimizeToken
 		local tweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 		if minimized then
-<<<<<<< HEAD
 			if DropShadowHolder.Size.Y.Offset > 38 or DropShadowHolder.Size.Y.Scale > 0 then
 				expandedSize = DropShadowHolder.Size
 			end
@@ -1359,36 +1355,21 @@ function FlurioreLib:MakeGui(GuiConfig)
 			LayersTab.Visible = false
 			LayersTab.Position = contentRestPosTab
 			Layers.Position = contentRestPosLayers
-=======
-			expandedSize = DropShadowHolder.Size
-			LayersTabExpandedPosition = LayersTab.Position
-			LayersExpandedPosition = Layers.Position
-			Layers.Visible = false
-			LayersTab.Visible = false
->>>>>>> afdfcfe3fa1d345b8cb916c8e394ebc539eec148
 			local sizeTween = TweenService:Create(DropShadowHolder, tweenInfo, {
 				Size = UDim2.new(expandedSize.X.Scale, expandedSize.X.Offset, 0, 38)
 			})
 			sizeTween:Play()
 		else
-<<<<<<< HEAD
 			LayersTab.Position = contentRestPosTab
 			Layers.Position = contentRestPosLayers
 			LayersTab.Visible = false
 			Layers.Visible = false
-=======
->>>>>>> afdfcfe3fa1d345b8cb916c8e394ebc539eec148
 			local sizeTween = TweenService:Create(DropShadowHolder, tweenInfo, {Size = expandedSize})
 			sizeTween:Play()
 			sizeTween.Completed:Connect(function()
 				if token ~= minimizeToken or IsMinimized then return end
-<<<<<<< HEAD
 				LayersTab.Position = contentRestPosTab
 				Layers.Position = contentRestPosLayers
-=======
-				LayersTab.Position = LayersTabExpandedPosition
-				Layers.Position = LayersExpandedPosition
->>>>>>> afdfcfe3fa1d345b8cb916c8e394ebc539eec148
 				LayersTab.Visible = true
 				Layers.Visible = true
 			end)
@@ -2508,12 +2489,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 				end)
 
 				TextBox.FocusLost:Connect(function(enterPressed)
-<<<<<<< HEAD
 					local cleaned = (TextBox.Text or ""):gsub(",", ".")
 					local parsed = tonumber(cleaned)
-=======
-					local parsed = tonumber((TextBox.Text or ""):gsub(",", "."))
->>>>>>> afdfcfe3fa1d345b8cb916c8e394ebc539eec148
 					if parsed == nil then
 						TextBox.Text = formatNumber(SliderFunc.Value)
 						return
