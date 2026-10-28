@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090a10">
+  <meta name="description" content="FlurioreLib documentation — setup, windows, themes, UI elements, keybinds and configuration for Roblox Lua UI scripts.">
+  <title>FlurioreLib — Documentation</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090a0f;
+      --sidebar: #0c0d13;
+      --panel: #10121b;
+      --panel-2: #141622;
+      --panel-hover: #1a1c2a;
+      --border: #252737;
+      --border-soft: #1b1d2a;
+      --text: #f2f2f8;
+      --muted: #a0a3b7;
+      --dim: #71758a;
+      --accent: #d879ff;
+      --accent-2: #9a78ff;
+      --accent-soft: rgba(199, 117, 255, .12);
+      --green: #85e4b2;
+      --code: #090b12;
+      --topbar-h: 64px;
+      --sidebar-w: 258px;
+      --radius: 14px;
+      --shadow: 0 18px 60px rgba(0,0,0,.22);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+    body {
+      margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+      font: 15px/1.75 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: ""; position: fixed; pointer-events: none; z-index: -1; inset: 0;
+      background: radial-gradient(ellipse 560px 400px at 48% -180px, rgba(150, 76, 255, .13), transparent 70%),
+                  radial-gradient(ellipse 420px 300px at 95% 15%, rgba(220, 91, 207, .045), transparent 72%);
+    }
+    a { color: #d9a2ff; text-decoration: none; }
+    a:hover { color: #f0d8ff; }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    ::selection { background: rgba(194, 105, 255, .3); }
+
+    .sidebar {
+      position: fixed; inset: 0 auto 0 0; width: var(--sidebar-w); z-index: 50;
+      display: flex; flex-direction: column; padding: 19px 14px 14px;
+      background: rgba(12,13,19,.96); border-right: 1px solid var(--border-soft);
+      backdrop-filter: blur(18px); overflow-y: auto;
+    }
+    .brand { display: flex; gap: 11px; align-items: center; padding: 4px 10px 19px; border-bottom: 1px solid var(--border-soft); }
+    .brand-mark {
+      width: 37px; height: 37px; border-radius: 12px; flex: 0 0 auto; display: grid; place-items: center;
+      color: white; font-weight: 850; font-size: 18px; letter-spacing: -1px;
+      background: linear-gradient(140deg, #c879ff, #8465f6 70%, #5d5ce0);
+      box-shadow: 0 5px 22px rgba(155,95,255,.25);
+    }
+    .brand-name { font-size: 15px; font-weight: 760; line-height: 1.2; letter-spacing: -.025em; }
+    .brand-name span { color: #d69aff; }
+    .brand-sub { display: block; margin-top: 4px; color: var(--dim); font-size: 11px; font-weight: 500; letter-spacing: .035em; }
+    .nav-search-hint { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 15px 2px 17px; padding: 9px 10px; border-radius: 9px; border: 1px solid var(--border); background: #10111a; color: var(--dim); cursor: pointer; text-align: left; font-size: 12px; }
+    .nav-search-hint:hover { border-color: #514061; color: var(--muted); }
+    kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; padding: 1px 5px; border: 1px solid #343548; border-radius: 5px; color: #989ab0; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; background: #171824; }
+    .nav-group { margin: 1px 0 16px; }
+    .nav-label { padding: 0 11px 7px; font-size: 10px; text-transform: uppercase; letter-spacing: .14em; font-weight: 750; color: #686c82; }
+    .nav-link { position: relative; display: flex; align-items: center; gap: 10px; min-height: 35px; margin: 2px 0; padding: 7px 11px; border-radius: 8px; color: #9b9eb2; font-size: 13px; transition: background .16s, color .16s; }
+    .nav-link:hover { background: #151622; color: #ecebfa; text-decoration: none; }
+    .nav-link.active { color: #ead6ff; background: linear-gradient(90deg, rgba(169,104,255,.17), rgba(169,104,255,.055)); }
+    .nav-link.active::before { content: ""; position: absolute; left: -14px; top: 8px; bottom: 8px; width: 2px; background: #ca83ff; border-radius: 0 3px 3px 0; }
+    .nav-icon { width: 16px; text-align: center; color: #767a92; font-size: 13px; }
+    .nav-link.active .nav-icon { color: #d5a0ff; }
+    .sidebar-bottom { margin-top: auto; padding: 14px 7px 2px; border-top: 1px solid var(--border-soft); }
+    .github-link { display: flex; align-items: center; justify-content: space-between; padding: 8px 7px; color: #a5a8bb; font-size: 12px; }
+    .github-link:hover { color: white; text-decoration: none; }
+    .github-link small { color: #777b8f; }
+
+    .app { min-height: 100vh; margin-left: var(--sidebar-w); }
+    .topbar {
+      height: var(--topbar-h); position: sticky; top: 0; z-index: 30; display: flex; align-items: center;
+      justify-content: space-between; gap: 20px; padding: 0 clamp(20px, 4vw, 52px);
+      border-bottom: 1px solid rgba(37,39,55,.8); background: rgba(9,10,15,.83); backdrop-filter: blur(18px);
+    }
+    .crumbs { display: flex; align-items: center; gap: 9px; color: #777b90; font-size: 12px; white-space: nowrap; }
+    .crumbs strong { color: #d0d1df; font-weight: 600; }
+    .crumb-sep { color: #45485a; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .top-link { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; color: #a7a9bb; border-radius: 8px; font-size: 12px; }
+    .top-link:hover { background: var(--panel-hover); color: white; text-decoration: none; }
+    .top-link svg { width: 15px; height: 15px; }
+    .mobile-menu { display: none; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border); background: var(--panel); cursor: pointer; }
+
+    .doc-layout { display: grid; grid-template-columns: minmax(0, 830px) 168px; align-items: start; gap: clamp(26px, 4vw, 54px); max-width: 1250px; margin: 0 auto; padding: 42px clamp(20px, 4vw, 52px) 70px; }
+    .article { min-width: 0; }
+    .eyebrow { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 17px; padding: 5px 10px; color: #d9b8ff; border: 1px solid rgba(194,127,255,.23); background: rgba(171,104,255,.075); border-radius: 999px; font-size: 11px; letter-spacing: .02em; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #9ceac1; box-shadow: 0 0 10px rgba(112,235,174,.45); }
+    h1 { margin: 0; font-size: clamp(34px, 4vw, 46px); font-weight: 780; line-height: 1.15; letter-spacing: -.055em; }
+    .gradient-text { background: linear-gradient(100deg, #f2dcff 2%, #d19bff 42%, #a49aff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .hero-description { max-width: 690px; margin: 18px 0 23px; color: #a5a8bb; font-size: 16px; line-height: 1.8; }
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+    .pill { padding: 4px 9px; border-radius: 7px; border: 1px solid #292b3c; color: #9ea1b7; font-size: 11px; background: rgba(18,19,29,.75); }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 30px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 10px 14px; min-height: 39px; border-radius: 9px; border: 1px solid var(--border); background: #151622; color: #e3e3f0; font-size: 12px; font-weight: 650; cursor: pointer; transition: transform .15s, border-color .15s, background .15s; }
+    .button:hover { background: #1d1e2c; border-color: #48435e; color: white; text-decoration: none; }
+    .button:active { transform: translateY(1px); }
+    .button.primary { color: #13091b; border-color: transparent; background: linear-gradient(105deg, #e1a6ff, #bba2ff); box-shadow: 0 6px 20px rgba(183,121,255,.15); }
+    .button.primary:hover { background: linear-gradient(105deg, #edc7ff, #cec0ff); }
+    .button svg { width: 15px; height: 15px; }
+    .hero-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 0 0 42px; }
+    .hero-card { min-height: 108px; padding: 15px; background: linear-gradient(145deg, rgba(20,21,33,.96), rgba(14,15,23,.96)); border: 1px solid var(--border); border-radius: 12px; }
+    .hero-card-icon { display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 10px; border-radius: 8px; border: 1px solid rgba(202,131,255,.18); background: rgba(167,103,255,.10); color: #d7a2ff; font-size: 15px; }
+    .hero-card strong { display: block; margin-bottom: 3px; font-size: 12px; font-weight: 700; }
+    .hero-card span { display: block; color: #85899e; font-size: 11px; line-height: 1.55; }
+
+    .doc-section { margin: 0 0 46px; scroll-margin-top: 88px; }
+    .section-heading { display: flex; align-items: center; gap: 10px; padding-top: 5px; margin: 0 0 14px; font-size: 23px; font-weight: 720; letter-spacing: -.035em; line-height: 1.35; }
+    .section-heading::before { content: ""; flex: 0 0 auto; width: 3px; height: 23px; border-radius: 3px; background: linear-gradient(#d487ff,#8f82ff); }
+    .section-desc { margin: -3px 0 16px; color: var(--muted); font-size: 14px; }
+    h3 { margin: 26px 0 8px; font-size: 16px; line-height: 1.5; letter-spacing: -.015em; font-weight: 680; color: #e7e6f2; }
+    p { margin: 10px 0 14px; color: var(--muted); }
+    ul, ol { padding-left: 22px; color: var(--muted); }
+    li { margin: 5px 0; padding-left: 2px; }
+    strong { color: #e4e3f1; font-weight: 650; }
+    code:not(pre code) { padding: 2px 5px; border-radius: 5px; border: 1px solid #292a3a; background: #151622; color: #dcb8ff; font: .88em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+    .code-card { overflow: hidden; margin: 14px 0 19px; background: var(--code); border: 1px solid #292a3a; border-radius: 12px; box-shadow: 0 7px 24px rgba(0,0,0,.08); }
+    .code-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; padding: 7px 10px 7px 15px; background: linear-gradient(90deg, #141520, #11121b); border-bottom: 1px solid #222432; }
+    .code-language { display: inline-flex; align-items: center; gap: 8px; color: #8589a0; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+    .code-language::before { content: ""; display: block; width: 6px; height: 6px; border-radius: 2px; background: #b78aff; }
+    .copy-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 76px; padding: 5px 8px; border: 1px solid #303143; border-radius: 7px; color: #989bb0; background: #191a27; font-size: 11px; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+    .copy-button:hover { color: #f2dfff; border-color: #655078; background: #242032; }
+    .copy-button.copied { color: var(--green); border-color: rgba(133,228,178,.35); background: rgba(66,154,111,.1); }
+    .copy-button svg { width: 13px; height: 13px; }
+    pre { margin: 0; padding: 17px 18px 19px; overflow: auto; color: #d8d9e8; font: 12.5px/1.8 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; tab-size: 4; scrollbar-color: #333448 transparent; }
+    pre code { font: inherit; white-space: pre; }
+    .callout { display: flex; gap: 12px; margin: 16px 0 20px; padding: 13px 15px; border: 1px solid #3b3150; border-radius: 10px; background: linear-gradient(110deg, rgba(147,90,210,.10), rgba(22,19,31,.4)); }
+    .callout-icon { flex: 0 0 auto; color: #d4a0ff; line-height: 1.65; }
+    .callout p { margin: 0; font-size: 13px; }
+    .callout.warning { border-color: #4b3b2d; background: rgba(189,129,48,.07); }
+    .callout.warning .callout-icon { color: #e7b979; }
+    .table-wrap { overflow-x: auto; margin: 14px 0 20px; border: 1px solid var(--border); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; min-width: 480px; font-size: 12px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--border-soft); text-align: left; vertical-align: top; }
+    th { color: #d7d6e7; background: #151622; font-weight: 680; white-space: nowrap; }
+    td { color: #a2a5b9; }
+    tr:last-child td { border-bottom: 0; }
+    td code { white-space: nowrap; }
+    .subtle { color: var(--dim); font-size: 12px; }
+    .inline-link { text-decoration: underline; text-decoration-color: #685079; text-underline-offset: 3px; }
+
+    .toc { position: sticky; top: calc(var(--topbar-h) + 34px); padding-top: 8px; font-size: 11px; }
+    .toc-title { margin: 0 0 11px; color: #a5a7bb; font-size: 11px; font-weight: 700; }
+    .toc a { display: block; padding: 5px 0 5px 11px; border-left: 1px solid #292b3c; color: #777b91; line-height: 1.5; transition: color .15s, border-color .15s; }
+    .toc a:hover { color: #d7c4ec; text-decoration: none; }
+    .toc a.active { color: #d8acff; border-left: 1px solid #c47aff; }
+    .toc-note { margin-top: 23px; padding-top: 14px; border-top: 1px solid var(--border-soft); color: #74788d; font-size: 10px; line-height: 1.65; }
+    .footer { margin-top: 45px; padding-top: 20px; border-top: 1px solid var(--border-soft); color: #6d7185; font-size: 11px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 9px; }
+    .empty-state { display: none; padding: 18px; border: 1px dashed var(--border); border-radius: 10px; color: var(--muted); }
+    .toast { position: fixed; z-index: 100; right: 22px; bottom: 22px; padding: 11px 15px; border: 1px solid #4b4060; border-radius: 10px; background: #191522; color: #eee2ff; box-shadow: var(--shadow); font-size: 12px; opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .18s, transform .18s; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .search-overlay { display: none; position: fixed; inset: 0; z-index: 90; padding: min(16vh,130px) 18px 30px; background: rgba(3,4,8,.72); backdrop-filter: blur(8px); }
+    .search-overlay.open { display: block; }
+    .search-dialog { width: min(560px,100%); margin: 0 auto; overflow: hidden; border: 1px solid #37384c; border-radius: 14px; background: #10111b; box-shadow: 0 24px 100px rgba(0,0,0,.5); }
+    .search-input-row { display: flex; align-items: center; gap: 10px; padding: 15px; border-bottom: 1px solid var(--border); }
+    .search-input-row svg { width: 17px; height: 17px; color: #8d90a6; flex: 0 0 auto; }
+    .search-input { width: 100%; color: #efedfa; background: transparent; border: 0; outline: none; font-size: 14px; }
+    .search-input::placeholder { color: #696d83; }
+    .search-help { padding: 10px 15px; color: #6f7389; font-size: 10px; border-top: 1px solid var(--border-soft); }
+    .search-results { max-height: min(48vh, 390px); overflow-y: auto; padding: 6px; }
+    .search-result { display: block; padding: 10px 11px; border-radius: 8px; color: #d8d7e8; text-decoration: none; }
+    .search-result:hover, .search-result:focus-visible { background: #1b1c2a; color: #f4e9ff; text-decoration: none; }
+    .search-result-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; font-weight: 650; }
+    .search-result-title span:last-child { color: #6f7389; font-size: 12px; }
+    .search-result-excerpt { display: block; margin-top: 3px; color: #81859a; font-size: 11px; line-height: 1.55; }
+    .search-empty { padding: 18px 12px; text-align: center; color: #777b90; font-size: 12px; }
+    .scrim { display: none; position: fixed; inset: 0; z-index: 45; background: rgba(2,3,7,.68); backdrop-filter: blur(3px); }
+
+    @media (max-width: 1160px) {
+      .doc-layout { grid-template-columns: minmax(0, 1fr); max-width: 900px; }
+      .toc { display: none; }
+    }
+    @media (max-width: 780px) {
+      :root { --sidebar-w: 270px; --topbar-h: 58px; }
+      .sidebar { transform: translateX(-102%); transition: transform .22s ease; box-shadow: none; }
+      body.sidebar-open .sidebar { transform: translateX(0); box-shadow: 16px 0 60px rgba(0,0,0,.35); }
+      body.sidebar-open .scrim { display: block; }
+      .app { margin-left: 0; }
+      .mobile-menu { display: inline-flex; }
+      .topbar { padding: 0 16px; gap: 10px; }
+      .crumbs { gap: 6px; font-size: 11px; }
+      .top-link .link-label { display: none; }
+      .top-link { padding: 8px; }
+      .doc-layout { padding: 29px 18px 55px; }
+      .hero-grid { grid-template-columns: 1fr; gap: 9px; }
+      .hero-card { display: grid; grid-template-columns: 30px 1fr; column-gap: 11px; min-height: 0; align-items: center; padding: 12px; }
+      .hero-card-icon { grid-row: span 2; margin: 0; }
+      .hero-card strong { align-self: end; }
+      .hero-card span { align-self: start; }
+      .hero-description { font-size: 14px; }
+      .section-heading { font-size: 21px; }
+      pre { padding: 14px; font-size: 11.5px; }
+      .footer { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="scrim" id="scrim" aria-hidden="true"></div>
+  <aside class="sidebar" id="sidebar" aria-label="Documentation navigation">
+    <a class="brand" href="#intro" aria-label="FlurioreLib documentation home" style="text-decoration:none;color:inherit">
+      <span class="brand-mark">F</span>
+      <span class="brand-name">Fluriore<span>Lib</span><small class="brand-sub">DOCUMENTATION</small></span>
+    </a>
+    <button class="nav-search-hint" type="button" id="openSearch"><span>⌕ &nbsp;Search documentation</span><kbd>Ctrl K</kbd></button>
+
+    <nav id="sideNav">
+      <div class="nav-group">
+        <div class="nav-label">Get started</div>
+        <a class="nav-link active" href="#intro" data-nav="intro"><span class="nav-icon">⌂</span>Introduction</a>
+        <a class="nav-link" href="#install" data-nav="install"><span class="nav-icon">↳</span>Installation</a>
+        <a class="nav-link" href="#quick-start" data-nav="quick-start"><span class="nav-icon">▹</span>Quick start</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Window</div>
+        <a class="nav-link" href="#window" data-nav="window"><span class="nav-icon">▣</span>Window API</a>
+        <a class="nav-link" href="#theme" data-nav="theme"><span class="nav-icon">◐</span>Themes</a>
+        <a class="nav-link" href="#scale" data-nav="scale"><span class="nav-icon">↗</span>Scale</a>
+        <a class="nav-link" href="#search-api" data-nav="search-api"><span class="nav-icon">⌕</span>In-window search</a>
+        <a class="nav-link" href="#keybind" data-nav="keybind"><span class="nav-icon">⌘</span>Keybinds</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">State & data</div>
+        <a class="nav-link" href="#config" data-nav="config"><span class="nav-icon">▤</span>Config API</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Components</div>
+        <a class="nav-link" href="#elements" data-nav="elements"><span class="nav-icon">⊞</span>UI elements</a>
+        <a class="nav-link" href="#notifications" data-nav="notifications"><span class="nav-icon">◉</span>Notifications</a>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Reference</div>
+        <a class="nav-link" href="#utilities" data-nav="utilities"><span class="nav-icon">⌁</span>Utility APIs</a>
+        <a class="nav-link" href="#notes" data-nav="notes"><span class="nav-icon">ⓘ</span>Notes & compatibility</a>
+      </div>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <a class="github-link" href="https://github.com/MCUpload123/Fluriore-library" target="_blank" rel="noopener noreferrer"><span>↗ &nbsp;GitHub repository</span><small>↗</small></a>
+      <a class="github-link" href="https://raw.githubusercontent.com/MCUpload123/Fluriore-library/refs/heads/main/Flur.lua" target="_blank" rel="noopener noreferrer"><span>⌘ &nbsp;Raw source</span><small>↗</small></a>
+    </div>
+  </aside>
+
+  <div class="app">
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0">
+        <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Open navigation" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="17" height="17"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <div class="crumbs"><span>FlurioreLib</span><span class="crumb-sep">/</span><strong>Docs</strong></div>
+      </div>
+      <div class="top-actions">
+        <button class="top-link" type="button" id="topSearch" aria-label="Search docs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4 4"/></svg><span class="link-label">Search</span><kbd>⌘K</kbd></button>
+        <a class="top-link" href="https://github.com/MCUpload123/Fluriore-library" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.1c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.7 1.15 1.7 1.15.99 1.7 2.6 1.21 3.23.93.1-.72.39-1.21.7-1.49-2.48-.28-5.08-1.24-5.08-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.95 0 0 .94-.3 3.06 1.14a10.7 10.7 0 0 1 5.57 0c2.12-1.44 3.06-1.14 3.06-1.14.61 1.53.23 2.67.11 2.95.72.78 1.15 1.78 1.15 3 0 4.29-2.61 5.23-5.1 5.51.4.35.75 1.02.75 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z"/></svg><span class="link-label">GitHub</span></a>
+      </div>
+    </header>
+
+    <div class="doc-layout">
+      <main class="article" id="article">
+        <section class="doc-section" data-search-section>
+          <div class="eyebrow"><span class="status-dot"></span> Roblox · Luau UI library</div>
+          <h1 id="intro"><span class="gradient-text">FlurioreLib</span><br>Documentation</h1>
+          <p class="hero-description">A compact, customizable interface library for Roblox script hubs. Build windows, tabs, collapsible sections, controls, notifications and persistent configs with a straightforward Lua API.</p>
+          <div class="pills"><span class="pill">Mobile-friendly controls</span><span class="pill">Theme API</span><span class="pill">Search & keybinds</span><span class="pill">Config helpers</span></div>
+          <div class="hero-actions">
+            <a class="button primary" href="#quick-start">Get started <span aria-hidden="true">→</span></a>
+            <a class="button" href="https://github.com/MCUpload123/Fluriore-library" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.54v-2.1c-3.1.67-3.76-1.32-3.76-1.32-.5-1.28-1.23-1.62-1.23-1.62-1.01-.69.08-.68.08-.68 1.12.08 1.7 1.15 1.7 1.15.99 1.7 2.6 1.21 3.23.93.1-.72.39-1.21.7-1.49-2.48-.28-5.08-1.24-5.08-5.52 0-1.22.44-2.22 1.15-3-.12-.28-.5-1.42.11-2.95 0 0 .94-.3 3.06 1.14a10.7 10.7 0 0 1 5.57 0c2.12-1.44 3.06-1.14 3.06-1.14.61 1.53.23 2.67.11 2.95.72.78 1.15 1.78 1.15 3 0 4.29-2.61 5.23-5.1 5.51.4.35.75 1.02.75 2.06v3.05c0 .3.2.65.77.54A11.1 11.1 0 0 0 12 .9Z"/></svg> View source</a>
+          </div>
+          <div class="hero-grid">
+            <div class="hero-card"><div class="hero-card-icon">▣</div><strong>Window system</strong><span>Tabs, sections, minimize and resize behavior.</span></div>
+            <div class="hero-card"><div class="hero-card-icon">◈</div><strong>Flexible styling</strong><span>Colors, theme palettes, text and UI scaling.</span></div>
+            <div class="hero-card"><div class="hero-card-icon">⌘</div><strong>Built-in utilities</strong><span>Flags, configs, search and named keybinds.</span></div>
+          </div>
+          <h2 class="section-heading" id="source-url">Source URL</h2>
+          <p class="section-desc">Use the official raw source URL in your loader. The copy button copies only the code/text inside each block.</p>
+          <pre data-lang="URL"><code>https://raw.githubusercontent.com/MCUpload123/Fluriore-library/refs/heads/main/Flur.lua</code></pre>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="install">Installation</h2>
+          <p>Load the published <code>Flur.lua</code> file, then call it to receive the library table. This example checks download, compilation and initialization separately so failures are easier to diagnose.</p>
+          <pre data-lang="Luau"><code>local LibraryURL = "https://raw.githubusercontent.com/MCUpload123/Fluriore-library/refs/heads/main/Flur.lua"
+
+local ok, source = pcall(function()
+    return game:HttpGet(LibraryURL)
+end)
+assert(ok, "FlurioreLib download failed: " .. tostring(source))
+
+local chunk, compileError = loadstring(source)
+assert(type(chunk) == "function", "FlurioreLib compile failed: " .. tostring(compileError))
+
+local success, FlurioreLib = pcall(chunk)
+assert(success, "FlurioreLib initialization failed: " .. tostring(FlurioreLib))</code></pre>
+          <div class="callout warning"><span class="callout-icon">!</span><p><strong>Review code before running it.</strong> A loader using <code>loadstring</code> executes the downloaded Lua source. Only use a source you trust and an executor/environment where you have permission to run scripts.</p></div>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="quick-start">Quick start</h2>
+          <p>Create a window, add a tab and section, then add controls. You can use this as a minimal starting point and customize it from there.</p>
+          <pre data-lang="Luau"><code>local LibraryURL = "https://raw.githubusercontent.com/MCUpload123/Fluriore-library/refs/heads/main/Flur.lua"
+local FlurioreLib = loadstring(game:HttpGet(LibraryURL))()
+
+local Window = FlurioreLib:MakeGui({
+    NameHub = "My Hub",
+    Description = "Made with FlurioreLib",
+    Color = Color3.fromRGB(255, 0, 255),
+    UIScale = 0.9,
+    TextScale = 0.85,
+})
+
+local Tab = Window:CreateTab({Name = "Home", Icon = ""})
+local Section = Tab:AddSection("General")
+
+Section:AddParagraph({
+    Title = "Welcome",
+    Content = "This is your first FlurioreLib panel.",
+})
+
+Section:AddButton({
+    Title = "Say hello",
+    Content = "Prints a message when pressed.",
+    Callback = function()
+        print("Hello!")
+    end,
+})</code></pre>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="window">Window API</h2>
+          <p>Make a tab with <code>Window:CreateTab</code>, then place related controls inside a collapsible section. The window can be hidden, destroyed, made more transparent or assigned a different toggle key.</p>
+          <pre data-lang="Luau"><code>local Tab = Window:CreateTab({Name = "Main", Icon = ""})
+local Section = Tab:AddSection("General")
+
+Window:ToggleUI()
+Window:DestroyGui()
+Window:SetOpacity(0.15)
+Window:SetToggleKey(Enum.KeyCode.RightShift)
+
+Tab:SetBadge("2")
+Tab:ClearBadge()
+
+Section:Close()
+Section:Open()
+print(Section:IsOpen())</code></pre>
+          <div class="table-wrap"><table><thead><tr><th>Method</th><th>Purpose</th></tr></thead><tbody>
+            <tr><td><code>Window:CreateTab({Name, Icon})</code></td><td>Creates a tab and returns its handle.</td></tr>
+            <tr><td><code>Window:ToggleUI()</code></td><td>Shows or hides the window and returns the new visibility state.</td></tr>
+            <tr><td><code>Window:DestroyGui()</code></td><td>Removes the library window.</td></tr>
+            <tr><td><code>Window:SetOpacity(number)</code></td><td>Sets opacity from 0 (solid) to 0.95 (more transparent).</td></tr>
+            <tr><td><code>Window:SetToggleKey(KeyCode)</code></td><td>Changes the key used to show or hide the window.</td></tr>
+            <tr><td><code>Tab:SetBadge(text)</code> / <code>Tab:ClearBadge()</code></td><td>Sets or clears the tab badge.</td></tr>
+            <tr><td><code>Section:Open()</code> / <code>Section:Close()</code></td><td>Opens or closes a section.</td></tr>
+            <tr><td><code>Section:IsOpen()</code></td><td>Returns whether the section is open.</td></tr>
+          </tbody></table></div>
+          <p>Section closing hides its children before shrinking the height; opening expands the section before showing its children again.</p>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="theme">Themes</h2>
+          <p>Theme colors are controlled by code. Provide a palette when creating the window or update selected values later. Every color value must be a Roblox <code>Color3</code>.</p>
+          <pre data-lang="Luau"><code>Window:SetTheme({
+    Accent = Color3.fromRGB(80, 190, 255),
+    Background = Color3.fromRGB(15, 18, 25),
+    Surface = Color3.fromRGB(35, 40, 50),
+    Text = Color3.fromRGB(245, 245, 245),
+    MutedText = Color3.fromRGB(160, 170, 185),
+    Border = Color3.fromRGB(65, 75, 90),
+})
+
+-- Change only the accent color
+Window:SetAccent(Color3.fromRGB(120, 255, 160))
+
+-- Read the active palette
+local currentTheme = Window:GetTheme()
+print(currentTheme.Accent)</code></pre>
+          <div class="table-wrap"><table><thead><tr><th>Theme key</th><th>Controls</th></tr></thead><tbody>
+            <tr><td><code>Accent</code></td><td>Highlights and active controls.</td></tr>
+            <tr><td><code>Background</code></td><td>Main window background.</td></tr>
+            <tr><td><code>Surface</code></td><td>Component surfaces.</td></tr>
+            <tr><td><code>Text</code></td><td>Primary text.</td></tr>
+            <tr><td><code>MutedText</code></td><td>Descriptions and secondary text.</td></tr>
+            <tr><td><code>Border</code></td><td>UI outlines.</td></tr>
+          </tbody></table></div>
+          <p>When you call <code>SetTheme</code>, only supplied keys are changed. If no custom theme is provided at initialization, the built-in palette is used; <code>Color</code> sets the accent when <code>Theme</code> is omitted.</p>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="scale">Scale</h2>
+          <p>Text scale and overall UI scale can be changed independently. Calls return <code>true</code> when the requested value is accepted.</p>
+          <pre data-lang="Luau"><code>Window:SetTextScale(0.9)  -- range: 0.7 to 1.5
+Window:SetUIScale(1.0)    -- range: 0.75 to 1.2
+
+print(Window:GetTextScale())
+print(Window:GetUIScale())</code></pre>
+          <p class="subtle">Default text scale: <code>0.85</code>. Default UI scale: <code>0.9</code>.</p>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="search-api">In-window search</h2>
+          <p>The search field below the active tab title filters components by title and content. You can control the same filter from your script.</p>
+          <pre data-lang="Luau"><code>Window:SetSearch("speed") -- filter by title or content
+Window:ClearSearch()      -- clear the filter</code></pre>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="keybind">Keybinds</h2>
+          <p>Change the window toggle key or register named keybinds with callbacks.</p>
+          <pre data-lang="Luau"><code>-- The default window toggle key is RightShift
+Window:SetToggleKey(Enum.KeyCode.LeftControl)
+print(Window:GetToggleKey())
+
+Window:BindKey("fly", Enum.KeyCode.F, function()
+    print("fly toggled from keybind")
+end)
+
+Window:UnbindKey("fly")
+local binds = Window:GetBinds() -- map of id -> KeyCode</code></pre>
+          <p>Named binds fire when the key is pressed and the input has not been processed by another GUI text box. They do not block the window toggle key.</p>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="config">Config API</h2>
+          <p>Add a unique <code>Flag</code> to Toggle, Slider, Input, Dropdown or ColorPicker elements to include their values in config operations.</p>
+          <pre data-lang="Luau"><code>Section:AddToggle({
+    Title = "Auto farm",
+    Default = false,
+    Flag = "auto_farm",
+    Callback = function(enabled)
+        print("auto_farm", enabled)
+    end,
+})
+
+-- Save and load JSON files through executor filesystem APIs
+local ok, pathOrError = Window:SaveConfig("FlurioreConfigs", "main")
+local loaded, loadResult = Window:LoadConfig("FlurioreConfigs", "main")
+
+-- In-memory config tools
+local flags = Window:GetFlags()
+Window:SetFlags({auto_farm = true})
+local json = Window:ExportConfig()
+Window:ImportConfig(json)</code></pre>
+          <h3>Available config methods</h3>
+          <div class="table-wrap"><table><thead><tr><th>Method</th><th>What it does</th></tr></thead><tbody>
+            <tr><td><code>SaveConfig(folder, name)</code></td><td>Writes a JSON config file.</td></tr>
+            <tr><td><code>LoadConfig(folder, name)</code></td><td>Reads a file and applies its values.</td></tr>
+            <tr><td><code>GetFlags()</code> / <code>SetFlags(table)</code></td><td>Reads or applies registered values in memory.</td></tr>
+            <tr><td><code>ExportConfig()</code> / <code>ImportConfig(json)</code></td><td>Exports or applies config as a JSON string.</td></tr>
+            <tr><td><code>RegisterFlag(flag, getFn, setFn)</code></td><td>Registers a custom value using getter and setter functions.</td></tr>
+            <tr><td><code>ListConfigs(folder)</code></td><td>Lists config filenames; requires <code>listfiles</code>.</td></tr>
+            <tr><td><code>DeleteConfig(folder, name)</code></td><td>Deletes a config; requires <code>delfile</code>.</td></tr>
+            <tr><td><code>RenameConfig(folder, oldName, newName)</code></td><td>Renames a config file.</td></tr>
+          </tbody></table></div>
+          <div class="callout"><span class="callout-icon">i</span><p>Disk-based save/load needs executor filesystem APIs such as <code>writefile</code> and <code>readfile</code>. Folder and file helper availability can vary by executor. Methods return failure information when required APIs are missing.</p></div>
+          <h3>Register a custom flag</h3>
+          <pre data-lang="Luau"><code>Window:RegisterFlag("custom_stat", function()
+    return myStat
+end, function(value)
+    myStat = value
+end)</code></pre>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="elements">UI elements</h2>
+          <p>Elements are created from a section. Use <code>Callback</code> to respond to user interaction and optional <code>Flag</code> values for configuration persistence.</p>
+          <h3>Paragraph</h3>
+          <pre data-lang="Luau"><code>local Info = Section:AddParagraph({
+    Title = "Status",
+    Content = "Initial status text.",
+})
+
+Info:Set({
+    Title = "Updated status",
+    Content = "This text can be updated at runtime.",
+})</code></pre>
+          <h3>Button</h3>
+          <pre data-lang="Luau"><code>Section:AddButton({
+    Title = "Run",
+    Content = "Runs a callback.",
+    Icon = "rbxassetid://16932740082", -- optional
+    Callback = function()
+        print("Button pressed")
+    end,
+})</code></pre>
+          <h3>Toggle</h3>
+          <pre data-lang="Luau"><code>local Toggle = Section:AddToggle({
+    Title = "Enabled",
+    Content = "Turn a feature on or off.",
+    Default = false,
+    Flag = "feature_enabled", -- optional
+    Callback = function(enabled)
+        print("Enabled:", enabled)
+    end,
+})
+
+Toggle:Set(true) -- updates the control and calls Callback
+print(Toggle.Value)</code></pre>
+          <h3>Slider</h3>
+          <pre data-lang="Luau"><code>local Slider = Section:AddSlider({
+    Title = "Power",
+    Content = "Adjust the power value.",
+    Min = 0,
+    Max = 10,
+    Default = 2.5,
+    Increment = 0.25,
+    Flag = "power", -- optional
+    Callback = function(value)
+        print("Power:", value)
+    end,
+})
+
+Slider:Set(4.75)
+print(Slider.Value)</code></pre>
+          <p>Slider dragging supports mouse and touch input. The value field can be tapped to type a number. <code>Increment</code> controls rounding precision; the value is clamped to <code>Min</code>/<code>Max</code>.</p>
+          <h3>Input</h3>
+          <pre data-lang="Luau"><code>local TextInput = Section:AddInput({
+    Title = "Player name",
+    Content = "Enter a name.",
+    Flag = "player_name", -- optional
+    Callback = function(value)
+        print("Input:", value)
+    end,
+})
+
+TextInput:Set("Example")
+print(TextInput.Value)</code></pre>
+          <h3>Dropdown</h3>
+          <pre data-lang="Luau"><code>local Dropdown = Section:AddDropdown({
+    Title = "Target",
+    Content = "Choose an option.",
+    Multi = false,
+    Options = {"Alpha", "Bravo", "Charlie"},
+    Default = "Alpha",
+    Flag = "target", -- optional
+    Callback = function(values)
+        print(table.concat(values, ", "))
+    end,
+})
+
+Dropdown:Set("Bravo")
+Dropdown:AddOption("Delta")
+Dropdown:Refresh({"One", "Two", "Three"}, "Two")
+-- Dropdown:Clear() removes options and selection.</code></pre>
+          <p>The dropdown's <code>Value</code> is a table of selected option strings, even when <code>Multi = false</code>. <code>Options</code> holds the available strings.</p>
+          <h3>Color picker</h3>
+          <pre data-lang="Luau"><code>local Picker = Section:AddColorPicker({
+    Title = "Accent",
+    Content = "Choose an accent color.",
+    Default = Color3.fromRGB(255, 0, 255),
+    Flag = "accent_color", -- optional
+    Callback = function(color)
+        Window:SetAccent(color)
+    end,
+})
+
+Picker:Set(Color3.fromRGB(80, 200, 255))</code></pre>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="notifications">Notifications</h2>
+          <p>Show a notification from the library table. <code>Time</code> controls the animation duration; <code>Delay</code> is the auto-dismiss delay in seconds.</p>
+          <pre data-lang="Luau"><code>local Notice = FlurioreLib:MakeNotify({
+    Title = "Saved",
+    Description = "Settings",
+    Content = "Your settings were saved.",
+    Color = Color3.fromRGB(80, 200, 120),
+    Time = 0.5,
+    Delay = 4,
+})</code></pre>
+          <h3>Global notification controls</h3>
+          <pre data-lang="Luau"><code>FlurioreLib:SetNotifyPosition("TopRight")
+-- Accepted positions: BottomRight, BottomLeft, TopRight, TopLeft
+
+FlurioreLib:GetNotifyPosition()
+FlurioreLib:SetNotifyMax(4) -- drop the oldest when the limit is reached
+FlurioreLib:GetNotifyMax()
+FlurioreLib:ClearNotifies()</code></pre>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="utilities">Utility APIs</h2>
+          <h3>Window opacity</h3>
+          <pre data-lang="Luau"><code>Window:SetOpacity(0.2) -- 0 = solid; higher = more transparent
+print(Window:GetOpacity())</code></pre>
+          <p>Opacity is clamped from <code>0</code> to <code>0.95</code>.</p>
+          <h3>Tab badge</h3>
+          <pre data-lang="Luau"><code>local Tab = Window:CreateTab({Name = "Combat", Icon = ""})
+Tab:SetBadge("3")
+Tab:ClearBadge()</code></pre>
+          <h3>Section open / close</h3>
+          <pre data-lang="Luau"><code>local Section = Tab:AddSection("Farm")
+Section:Close()
+Section:Open()
+print(Section:IsOpen())</code></pre>
+          <h3>Config list helpers</h3>
+          <pre data-lang="Luau"><code>local names = Window:ListConfigs("FlurioreConfigs") -- needs listfiles
+Window:DeleteConfig("FlurioreConfigs", "main")     -- needs delfile
+Window:RenameConfig("FlurioreConfigs", "main", "backup")</code></pre>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="notes">Notes & compatibility</h2>
+          <ul>
+            <li>FlurioreLib targets executor environments that expose <code>game:HttpGet()</code> and <code>loadstring()</code>; compatibility may vary by executor and version.</li>
+            <li>Disk config methods rely on supported filesystem functions such as <code>writefile</code>, <code>readfile</code>, and optionally <code>makefolder</code>, <code>isfolder</code>, <code>listfiles</code> or <code>delfile</code>.</li>
+            <li>UI descriptions wrap to their available width; slider precision comes from <code>Increment</code>, <code>Min</code> and <code>Max</code>.</li>
+            <li>Closing sections and minimizing the window hide content before resizing to reduce clipped or jumping layouts.</li>
+            <li>Executor behavior can vary, and not every executor configuration has been runtime-tested.</li>
+          </ul>
+          <div class="callout warning"><span class="callout-icon">!</span><p><strong>Use responsibly.</strong> Run scripts only where allowed and review downloaded source before execution.</p></div>
+        </section>
+
+        <div class="empty-state" id="emptyState">No matching documentation sections. Try another search term.</div>
+        <footer class="footer"><span>FlurioreLib Docs · Built for GitHub Pages</span><span><a href="https://github.com/MCUpload123/Fluriore-library" target="_blank" rel="noopener noreferrer">Source repository ↗</a></span></footer>
+      </main>
+
+      <aside class="toc" aria-label="On this page">
+        <div class="toc-title">On this page</div>
+        <nav id="tocLinks"></nav>
+        <div class="toc-note">FlurioreLib documentation<br>Examples are written in Luau.<br><br><a href="https://github.com/MCUpload123/Fluriore-library" target="_blank" rel="noopener noreferrer">Edit on GitHub ↗</a></div>
+      </aside>
+    </div>
+  </div>
+
+  <div class="search-overlay" id="searchOverlay" role="dialog" aria-modal="true" aria-label="Search documentation">
+    <div class="search-dialog">
+      <div class="search-input-row"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4 4"/></svg><input class="search-input" id="searchInput" type="search" placeholder="Search the documentation…" autocomplete="off"><kbd>ESC</kbd></div>
+      <div class="search-results" id="searchResults" aria-live="polite"><div class="search-empty">Start typing to search documentation.</div></div>
+      <div class="search-help">Search headings, examples and API names. Use ↑ / ↓ or tap a result, or press Enter to jump to the first match.</div>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite">Copied to clipboard</div>
+
+  <script>
+    (() => {
+      const $ = (selector, root = document) => root.querySelector(selector);
+      const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+      const copyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>';
+      const checkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
+      const toast = $('#toast');
+      let toastTimer;
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('show'), 1700);
+      }
+
+      // Add a copy toolbar to every code block, using the actual code text (not the visual label).
+      $$('pre').forEach((pre) => {
+        const card = document.createElement('div');
+        card.className = 'code-card';
+        pre.parentNode.insertBefore(card, pre);
+        card.appendChild(pre);
+        const toolbar = document.createElement('div');
+        toolbar.className = 'code-toolbar';
+        const lang = document.createElement('span');
+        lang.className = 'code-language';
+        lang.textContent = pre.dataset.lang || 'Luau';
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'copy-button';
+        button.innerHTML = copyIcon + '<span>Copy</span>';
+        button.setAttribute('aria-label', 'Copy code block');
+        button.addEventListener('click', async () => {
+          const value = pre.querySelector('code')?.textContent ?? pre.textContent;
+          try {
+            if (navigator.clipboard && window.isSecureContext) {
+              await navigator.clipboard.writeText(value);
+            } else {
+              const temp = document.createElement('textarea');
+              temp.value = value;
+              temp.setAttribute('readonly', '');
+              temp.style.position = 'fixed';
+              temp.style.opacity = '0';
+              document.body.appendChild(temp);
+              temp.select();
+              const copied = document.execCommand('copy');
+              temp.remove();
+              if (!copied) throw new Error('Clipboard unavailable');
+            }
+            button.classList.add('copied');
+            button.innerHTML = checkIcon + '<span>Copied</span>';
+            showToast('Copied to clipboard');
+            setTimeout(() => {
+              button.classList.remove('copied');
+              button.innerHTML = copyIcon + '<span>Copy</span>';
+            }, 1600);
+          } catch (error) {
+            showToast('Copy failed — select the code and copy it manually');
+          }
+        });
+        toolbar.append(lang, button);
+        card.insertBefore(toolbar, pre);
+      });
+
+      // Build the in-page table of contents from the article headings.
+      const toc = $('#tocLinks');
+      const headings = $$('h2[id]', $('#article'));
+      headings.forEach((heading) => {
+        const link = document.createElement('a');
+        link.href = '#' + heading.id;
+        link.textContent = heading.textContent.trim();
+        link.dataset.toc = heading.id;
+        toc.appendChild(link);
+      });
+
+      const navLinks = $$('[data-nav]');
+      function setActive(id) {
+        navLinks.forEach(link => link.classList.toggle('active', link.dataset.nav === id));
+        $$('[data-toc]').forEach(link => link.classList.toggle('active', link.dataset.toc === id));
+      }
+      if ('IntersectionObserver' in window) {
+        const observer = new IntersectionObserver((entries) => {
+          const visible = entries.filter(entry => entry.isIntersecting).sort((a,b) => b.intersectionRatio - a.intersectionRatio);
+          if (visible[0]) setActive(visible[0].target.id);
+        }, { rootMargin: '-15% 0px -72% 0px', threshold: [0, .15, .35, .6] });
+        headings.forEach(heading => observer.observe(heading));
+        const intro = $('#intro');
+        if (intro) observer.observe(intro);
+      }
+      [...navLinks, ...$$('[data-toc]')].forEach(link => link.addEventListener('click', () => {
+        document.body.classList.remove('sidebar-open');
+        $('#mobileMenu').setAttribute('aria-expanded', 'false');
+      }));
+
+      const overlay = $('#searchOverlay');
+      const searchInput = $('#searchInput');
+      const sections = $$('[data-search-section]');
+      const emptyState = $('#emptyState');
+      const searchResults = $('#searchResults');
+      let searchMatches = [];
+      function openSearch() {
+        overlay.classList.add('open');
+        searchInput.value = '';
+        searchInput.focus();
+        filterDocs('');
+      }
+      function closeSearch() {
+        overlay.classList.remove('open');
+        searchInput.blur();
+      }
+      function filterDocs(query) {
+        const terms = query.trim().toLowerCase();
+        searchMatches = [];
+        sections.forEach(section => {
+          const haystack = section.textContent.toLowerCase();
+          const match = !terms || haystack.includes(terms);
+          section.hidden = !match;
+          if (match && terms) searchMatches.push(section);
+        });
+        emptyState.style.display = sections.every(section => section.hidden) ? 'block' : 'none';
+        searchResults.replaceChildren();
+        if (!terms) {
+          const hint = document.createElement('div');
+          hint.className = 'search-empty';
+          hint.textContent = 'Start typing to search documentation.';
+          searchResults.appendChild(hint);
+        } else if (!searchMatches.length) {
+          const noResult = document.createElement('div');
+          noResult.className = 'search-empty';
+          noResult.textContent = 'No results found. Try a different keyword.';
+          searchResults.appendChild(noResult);
+        } else {
+          searchMatches.slice(0, 10).forEach(section => {
+            const heading = section.querySelector('h1[id], h2[id]');
+            if (!heading) return;
+            const result = document.createElement('a');
+            result.className = 'search-result';
+            result.href = '#' + heading.id;
+            const title = document.createElement('span');
+            title.className = 'search-result-title';
+            const titleText = document.createElement('span');
+            titleText.textContent = heading.textContent.trim();
+            const arrow = document.createElement('span');
+            arrow.textContent = '↗';
+            title.append(titleText, arrow);
+            const excerpt = document.createElement('span');
+            excerpt.className = 'search-result-excerpt';
+            const text = section.textContent.replace(/\s+/g, ' ').trim();
+            const at = text.toLowerCase().indexOf(terms);
+            const start = at < 0 ? 0 : Math.max(0, at - 34);
+            excerpt.textContent = (start > 0 ? '…' : '') + text.slice(start, start + 115) + (start + 115 < text.length ? '…' : '');
+            result.append(title, excerpt);
+            result.addEventListener('click', event => {
+              event.preventDefault();
+              closeSearch();
+              heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              setActive(heading.id);
+            });
+            searchResults.appendChild(result);
+          });
+        }
+        navLinks.forEach(link => {
+          const target = document.getElementById(link.dataset.nav);
+          const parentSection = target?.closest('[data-search-section]');
+          link.style.display = parentSection && parentSection.hidden ? 'none' : '';
+        });
+        $$('.nav-group').forEach(group => {
+          const items = $$('.nav-link', group);
+          group.style.display = items.every(item => item.style.display === 'none') ? 'none' : '';
+        });
+      }
+      $('#openSearch').addEventListener('click', openSearch);
+      $('#topSearch').addEventListener('click', openSearch);
+      searchInput.addEventListener('input', () => filterDocs(searchInput.value));
+      searchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          const first = searchMatches[0];
+          if (first) {
+            const heading = first.querySelector('h2[id], h1[id]');
+            closeSearch();
+            first.hidden = false;
+            heading?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+      });
+      overlay.addEventListener('click', (event) => { if (event.target === overlay) closeSearch(); });
+      document.addEventListener('keydown', (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+          event.preventDefault(); overlay.classList.contains('open') ? closeSearch() : openSearch();
+        }
+        if (event.key === 'Escape' && overlay.classList.contains('open')) closeSearch();
+      });
+
+      const mobileMenu = $('#mobileMenu');
+      mobileMenu.addEventListener('click', () => {
+        const open = !document.body.classList.contains('sidebar-open');
+        document.body.classList.toggle('sidebar-open', open);
+        mobileMenu.setAttribute('aria-expanded', String(open));
+      });
+      $('#scrim').addEventListener('click', () => {
+        document.body.classList.remove('sidebar-open');
+        mobileMenu.setAttribute('aria-expanded', 'false');
+      });
+    })();
+  </script>
+</body>
+</html>

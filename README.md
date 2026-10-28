@@ -2,6 +2,12 @@
 
 FlurioreLib is a compact Roblox Lua UI library with a draggable/resizable window, tabs, collapsible sections, notifications, and common UI components. This version includes mobile-friendly slider dragging, editable slider values, responsive text sizing, a smoother minimize animation, in-window search, a code-driven theme API, keybind helpers, and a file-based config system.
 
+## Documentation website
+
+Documentation site: https://mcupload123.github.io/Fluriore-library/
+
+The GitHub Pages homepage is `index.html` at the repository root. The editable documentation source is also kept at `docs/docs-index.html`.
+
 ## Executor compatibility
 
 This library is intended for Roblox script-executor environments such as **Delta** and other executors that allow `game:HttpGet()` and `loadstring()`. Executor APIs and compatibility can change between versions, so support is not guaranteed for every executor or configuration. Use scripts only in experiences and environments where you have permission to run them.
