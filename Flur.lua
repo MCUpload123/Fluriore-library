@@ -1016,7 +1016,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	local SearchBox = Instance.new("TextBox")
 	SearchBox.Name = "SearchBox"
 	SearchBox:SetAttribute("FlurThemeRole", "MutedText")
-	SearchBox.PlaceholderText = tostring(DropdownConfig.SearchPlaceholder or "Search...")
+	SearchBox.PlaceholderText = tostring(GuiConfig.SearchPlaceholder or "Search...")
 	SearchBox.Text = ""
 	SearchBox.Font = Enum.Font.Gotham
 	SearchBox.TextSize = 12
