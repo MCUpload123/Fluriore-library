@@ -209,12 +209,27 @@ function CircleClick(Button, X, Y)
 		end
 
 		local Time = 0.5
-		Circle:TweenSizeAndPosition(UDim2.new(0, Size, 0, Size), UDim2.new(0.5, -Size/2, 0.5, -Size/2), "Out", "Quad", Time, false, nil)
-		for i=1,10 do
-			Circle.ImageTransparency = Circle.ImageTransparency + 0.01
-			wait(Time/10)
+		local targetSize = UDim2.new(0, Size, 0, Size)
+		local targetPosition = UDim2.new(0.5, -Size/2, 0.5, -Size/2)
+		-- Legacy GuiObject:TweenSizeAndPosition errors when the control has
+		-- already been detached from PlayerGui. Tween only while it is in game.
+		if Button:IsDescendantOf(game) and Circle:IsDescendantOf(game) then
+			local rippleTween = TweenService:Create(
+				Circle,
+				TweenInfo.new(Time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{Size = targetSize, Position = targetPosition}
+			)
+			rippleTween:Play()
+		else
+			Circle.Size = targetSize
+			Circle.Position = targetPosition
 		end
-		Circle:Destroy()
+		for i = 1, 10 do
+			if not Circle.Parent then break end
+			Circle.ImageTransparency = math.min(1, Circle.ImageTransparency + 0.01)
+			task.wait(Time / 10)
+		end
+		if Circle.Parent then Circle:Destroy() end
 	end)
 end
 
@@ -3848,39 +3863,53 @@ if type(GuiConfig.MobileToggle) == "table" then
 						if type(Value) ~= "table" then Value = {Value} end
 						DropdownFunc.Value = Value
 					end
-					for _, Drop in ScrollSelect:GetChildren() do
-						if Drop.Name ~= "UIListLayout" and not table.find(DropdownFunc.Value, Drop.OptionText.Text) then
-							TweenService:Create(
-								Drop.ChooseFrame,
-								TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{Size = UDim2.new(0, 0, 0, 0)}
-							):Play()
-							TweenService:Create(
-								Drop.ChooseFrame.UIStroke,
-								TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{Transparency = 0.999}
-							):Play()
-							TweenService:Create(
-								Drop,
-								TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{BackgroundTransparency = 0.999}
-							):Play()
-						elseif Drop.Name ~= "UIListLayout" and table.find(DropdownFunc.Value, Drop.OptionText.Text) then
-							TweenService:Create(
-								Drop.ChooseFrame.UIStroke,
-								TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{Transparency = 0}
-							):Play()
-							TweenService:Create(
-								Drop.ChooseFrame,
-								TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{Size = UDim2.new(0, 1, 0, 12)}
-							):Play()
-							TweenService:Create(
-								Drop,
-								TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{BackgroundTransparency = 0.935}
-							):Play()
+					local selectedValues = DropdownFunc.Value
+					if type(selectedValues) ~= "table" then
+						selectedValues = selectedValues == nil and {} or {selectedValues}
+						DropdownFunc.Value = selectedValues
+					end
+					for _, Drop in ipairs(ScrollSelect:GetChildren()) do
+						-- SearchRow and UIListLayout are not selectable option frames.
+						if Drop.Name == "Option" and Drop:IsA("GuiObject") then
+							local optionText = Drop:FindFirstChild("OptionText")
+							local chooseFrame = Drop:FindFirstChild("ChooseFrame")
+							local chooseStroke = chooseFrame and chooseFrame:FindFirstChild("UIStroke")
+							if optionText and chooseFrame and chooseStroke then
+								local isSelected = table.find(selectedValues, optionText.Text) ~= nil
+								if isSelected then
+									TweenService:Create(
+										chooseStroke,
+										TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{Transparency = 0}
+									):Play()
+									TweenService:Create(
+										chooseFrame,
+										TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{Size = UDim2.new(0, 1, 0, 12)}
+									):Play()
+									TweenService:Create(
+										Drop,
+										TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{BackgroundTransparency = 0.935}
+									):Play()
+								else
+									TweenService:Create(
+										chooseFrame,
+										TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{Size = UDim2.new(0, 0, 0, 0)}
+									):Play()
+									TweenService:Create(
+										chooseStroke,
+										TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{Transparency = 0.999}
+									):Play()
+									TweenService:Create(
+										Drop,
+										TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{BackgroundTransparency = 0.999}
+									):Play()
+								end
+							end
 						end
 					end
 					local DropdownValueTable = table.concat(DropdownFunc.Value, ", ")
