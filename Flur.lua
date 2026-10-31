@@ -1079,7 +1079,10 @@ function FlurioreLib:MakeGui(GuiConfig)
 	LayersPageLayout.TweenTime = 0.42
 	LayersPageLayout.EasingDirection = Enum.EasingDirection.Out
 	LayersPageLayout.EasingStyle = Enum.EasingStyle.Quint
-	LayersPageLayout.TouchInputAllowed = false
+	-- stop UIPageLayout's own touch paging; the tab swipe handler below does it instead
+	pcall(function()
+		LayersPageLayout.TouchInputEnabled = false
+	end)
 	--// Layer Tabs
 	local ScrollTab = Instance.new("ScrollingFrame");
 	local UIListLayout = Instance.new("UIListLayout");
