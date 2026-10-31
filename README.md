@@ -36,6 +36,7 @@ local Window = FlurioreLib:MakeGui({
   Blur = false,       -- local frost only (panel more transparent); NOT full-screen blur
   RealGlass = false,  -- experimental glass + DepthOfField behind the window (see "Real glass")
   RealGlassIntensity = 1,   -- 0–1, blur strength near the camera (default 1)
+  Intro = true,             -- rise-and-fade when the window is built (false = skip)
   ThemePreset = "Midnight", -- "Dark" | "Midnight" | "Rose" | "Mint"
 
   BackgroundImage = "",                 -- optional rbxassetid://...
@@ -502,6 +503,8 @@ High priority is kept longer when the queue is full; normal toasts are removed f
 - Maximize / minimize are independent of the initial `Size` you pass to `MakeGui`.
 - Window frost (`SetBlur`) is panel transparency only, not a full-screen post effect.
 - Default text scale is `0.85`.
+- Swipe left or right on the tab content to move to the next or previous tab. Quick flicks and drags past about 60 px both count.
+- The header X fades the window out smoothly before it is destroyed.
 - Default panel opacity (`Main`) is `0.3`, more see-through than older versions.
 - Real glass (`RealGlass`) is experimental. It blurs only depth near the camera, so the far world stays sharp. See Real glass.
 

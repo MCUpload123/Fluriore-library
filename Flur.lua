@@ -616,7 +616,7 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 		Close.Activated:Connect(function()
 			NotifyFunction:Close()
 		end)
-		local inInfo = TweenInfo.new(NotifyConfig.Time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		local inInfo = TweenInfo.new(NotifyConfig.Time, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 		TweenService:Create(NotifyFrameReal, inInfo, {
 			Position = UDim2.new(0, 0, 0, 0),
 			BackgroundTransparency = useNotifyBlur and 0.4 or 0.05,
@@ -1076,9 +1076,10 @@ function FlurioreLib:MakeGui(GuiConfig)
 	LayersPageLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	LayersPageLayout.Name = "LayersPageLayout"
 	LayersPageLayout.Parent = LayersFolder
-	LayersPageLayout.TweenTime = 0.5
-	LayersPageLayout.EasingDirection = Enum.EasingDirection.InOut
-	LayersPageLayout.EasingStyle = Enum.EasingStyle.Quad
+	LayersPageLayout.TweenTime = 0.42
+	LayersPageLayout.EasingDirection = Enum.EasingDirection.Out
+	LayersPageLayout.EasingStyle = Enum.EasingStyle.Quint
+	LayersPageLayout.TouchInputAllowed = false
 	--// Layer Tabs
 	local ScrollTab = Instance.new("ScrollingFrame");
 	local UIListLayout = Instance.new("UIListLayout");
@@ -2261,9 +2262,37 @@ function FlurioreLib:MakeGui(GuiConfig)
 		CircleClick(Min, Mouse.X, Mouse.Y)
 		SetMinimized(not IsMinimized)
 	end)
+	local closing = false
+	local function fadeOutTree(root, info)
+	    for _, d in ipairs(root:GetDescendants()) do
+	        if d:IsA("GuiObject") then
+	            local goal = {BackgroundTransparency = 1}
+	            if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+	                goal.TextTransparency = 1
+	            end
+	            if d:IsA("ImageLabel") or d:IsA("ImageButton") then
+	                goal.ImageTransparency = 1
+	            end
+	            TweenService:Create(d, info, goal):Play()
+	        end
+	    end
+	end
 	Close.Activated:Connect(function()
-		CircleClick(Close, Mouse.X, Mouse.Y)
-		GuiFunc:DestroyGui()
+	    CircleClick(Close, Mouse.X, Mouse.Y)
+	    if closing then return end
+	    closing = true
+	    local fadeInfo = TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	    fadeOutTree(Main, fadeInfo)
+	    TweenService:Create(Main, fadeInfo, {BackgroundTransparency = 1}):Play()
+	    local basePos = DropShadowHolder.Position
+	    TweenService:Create(
+	        DropShadowHolder,
+	        TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+	        {Position = basePos + UDim2.new(0, 0, 0, 16)}
+	    ):Play()
+	    task.delay(0.3, function()
+	        GuiFunc:DestroyGui()
+	    end)
 	end)
 	local mobileToggleBtn = nil
 	local mobileToggleIcon = nil
@@ -2273,7 +2302,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 		Corner = 10,
 		Icon = "",
 		Smooth = true,
-		TweenTime = 0.22,
+		TweenTime = 0.32,
 		Position = UDim2.new(0, 14, 0, 14),
 	}
 
@@ -2299,7 +2328,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 				applyBackgroundLook()
 				local targetMain = Main.BackgroundTransparency
 				Main.BackgroundTransparency = 1
-				TweenService:Create(Main, TweenInfo.new(mobileCfg.TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				TweenService:Create(Main, TweenInfo.new(mobileCfg.TweenTime, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 					BackgroundTransparency = targetMain,
 				}):Play()
 			else
@@ -2621,6 +2650,73 @@ if type(GuiConfig.MobileToggle) == "table" then
 	--// Tabs
 	local Tabs = GuiFunc
 	local CountTab = 0
+	local tabSelectors = {}
+	local currentTabIndex = 0
+	local function setControlDragging(on)
+	    HirimiGui:SetAttribute("FlurControlDragging", on and true or false)
+	end
+
+	-- Horizontal flick on the content area switches tabs. Global input, so scrolling or
+	-- touch-capturing children do not block it. Sliders and color pickers set FlurControlDragging.
+	do
+	    local swipe = nil
+	    local function isTouchLike(t)
+	        return t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1
+	    end
+	    local function insideLayers(pos)
+	        if not LayersReal.Visible then return false end
+	        local tl, sz = LayersReal.AbsolutePosition, LayersReal.AbsoluteSize
+	        return sz.X > 0 and sz.Y > 0 and pos.X >= tl.X and pos.X <= tl.X + sz.X and pos.Y >= tl.Y and pos.Y <= tl.Y + sz.Y
+	    end
+	    local function stepTab(direction)
+	        local list = {}
+	        for idx in pairs(tabSelectors) do table.insert(list, idx) end
+	        table.sort(list)
+	        local pos = nil
+	        for i, idx in ipairs(list) do
+	            if idx == currentTabIndex then pos = i end
+	        end
+	        if not pos then return end
+	        local target = list[pos + direction]
+	        if target and tabSelectors[target] then
+	            tabSelectors[target]()
+	        end
+	    end
+
+	    UserInputService.InputBegan:Connect(function(input)
+	        if not isTouchLike(input.UserInputType) then return end
+	        if not (HirimiGui.Enabled and DropShadowHolder.Visible) then return end
+	        if not insideLayers(input.Position) then return end
+	        swipe = {start = input.Position, time = os.clock(), dir = nil}
+	    end)
+
+	    UserInputService.InputChanged:Connect(function(input)
+	        if not swipe or swipe.dir == "blocked" then return end
+	        if HirimiGui:GetAttribute("FlurControlDragging") then
+	            swipe.dir = "blocked"
+	            return
+	        end
+	        if input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+	        local d = input.Position - swipe.start
+	        if not swipe.dir and (math.abs(d.X) > 12 or math.abs(d.Y) > 12) then
+	            swipe.dir = (math.abs(d.X) > math.abs(d.Y) * 1.5) and "h" or "v"
+	        end
+	    end)
+
+	    UserInputService.InputEnded:Connect(function(input)
+	        if not isTouchLike(input.UserInputType) then return end
+	        local s0 = swipe
+	        swipe = nil
+	        setControlDragging(false)
+	        if not s0 or s0.dir ~= "h" then return end
+	        local dx = input.Position.X - s0.start.X
+	        local dt = math.max(os.clock() - s0.time, 0.016)
+	        local velocity = dx / dt
+	        if math.abs(dx) > 60 or math.abs(velocity) > 700 then
+	            stepTab(dx < 0 and 1 or -1)
+	        end
+	    end)
+	end
 	local CountDropdown = 0
 	function Tabs:CreateTab(TabConfig)
 		local TabConfig = TabConfig or {}
@@ -2633,6 +2729,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 		ScrolLayers.ScrollBarImageColor3 = Color3.fromRGB(80.00000283122063, 80.00000283122063, 80.00000283122063)
 		ScrolLayers.ScrollBarThickness = 0
 		ScrolLayers.Active = true
+		ScrolLayers.ScrollingDirection = Enum.ScrollingDirection.Y
 		ScrolLayers.LayoutOrder = CountTab
 		ScrolLayers.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 		ScrolLayers.BackgroundTransparency = 0.9990000128746033
@@ -2727,6 +2824,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 		FeatureImg.Parent = Tab
 		if CountTab == 0 then
 			LayersPageLayout:JumpToIndex(0)
+			currentTabIndex = 0
 			NameTab.Text = TabConfig.Name
 			local ChooseFrame = Instance.new("Frame");
 			ChooseFrame.BackgroundColor3 = GuiConfig.Color
@@ -2744,52 +2842,55 @@ if type(GuiConfig.MobileToggle) == "table" then
 
 			UICorner4.Parent = ChooseFrame
 		end
+		local function selectTab()
+		    local FrameChoose
+		    for a, s in ScrollTab:GetChildren() do
+		        for i, v in s:GetChildren() do
+		            if v.Name == "ChooseFrame" then
+		                FrameChoose = v
+		                break
+		            end
+		        end
+		    end
+		    if FrameChoose == nil or Tab.LayoutOrder == currentTabIndex then return end
+		    currentTabIndex = Tab.LayoutOrder
+
+		    local tabInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+		    for _, TabFrame in ScrollTab:GetChildren() do
+		        if TabFrame.Name == "Tab" then
+		            TweenService:Create(TabFrame, tabInfo, {BackgroundTransparency = 0.9990000128746033}):Play()
+		        end
+		    end
+		    TweenService:Create(Tab, tabInfo, {BackgroundTransparency = 0.9200000166893005}):Play()
+		    TweenService:Create(
+		        FrameChoose,
+		        TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		        {Position = UDim2.new(0, 2, 0, 9 + (33 * Tab.LayoutOrder))}
+		    ):Play()
+		    LayersPageLayout:JumpToIndex(Tab.LayoutOrder)
+		    task.delay(0.08, function()
+		        NameTab.Text = TabConfig.Name
+		    end)
+
+		    -- indicator stretches, then settles (chained on Completed, no fixed waits)
+		    local stretch = TweenService:Create(
+		        FrameChoose,
+		        TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		        {Size = UDim2.new(0, 1, 0, 20)}
+		    )
+		    stretch:Play()
+		    stretch.Completed:Connect(function()
+		        TweenService:Create(
+		            FrameChoose,
+		            TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		            {Size = UDim2.new(0, 1, 0, 12)}
+		        ):Play()
+		    end)
+		end
+		tabSelectors[Tab.LayoutOrder] = selectTab
 		TabButton.Activated:Connect(function()
-			CircleClick(TabButton, Mouse.X, Mouse.Y)
-			local FrameChoose
-			for a, s in ScrollTab:GetChildren() do
-				for i, v in s:GetChildren() do
-					if v.Name == "ChooseFrame" then
-						FrameChoose = v
-						break
-					end
-				end
-			end
-			if FrameChoose ~= nil and Tab.LayoutOrder ~= LayersPageLayout.CurrentPage.LayoutOrder then
-				for _, TabFrame in ScrollTab:GetChildren() do
-					if TabFrame.Name == "Tab" then
-						TweenService:Create(
-							TabFrame,
-							TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-							{BackgroundTransparency = 0.9990000128746033}
-						):Play()
-					end    
-				end
-				TweenService:Create(
-					Tab,
-					TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-					{BackgroundTransparency = 0.9200000166893005}
-				):Play()
-				TweenService:Create(
-					FrameChoose,
-					TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-					{Position = UDim2.new(0, 2, 0, 9 + (33 * Tab.LayoutOrder))}
-				):Play()
-				LayersPageLayout:JumpToIndex(Tab.LayoutOrder)
-				task.wait(0.05)
-				NameTab.Text = TabConfig.Name
-				TweenService:Create(
-					FrameChoose,
-					TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-					{Size = UDim2.new(0, 1, 0, 20)}
-				):Play()
-				task.wait(0.2)
-				TweenService:Create(
-					FrameChoose,
-					TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-					{Size = UDim2.new(0, 1, 0, 12)}
-				):Play()
-			end
+		    CircleClick(TabButton, Mouse.X, Mouse.Y)
+		    selectTab()
 		end)
 		--// Section 
 		local Sections = {}
@@ -3307,43 +3408,43 @@ if type(GuiConfig.MobileToggle) == "table" then
 					if Value then
 						TweenService:Create(
 							ToggleTitle,
-							TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 							{TextColor3 = GuiConfig.Color}
 						):Play()
 						TweenService:Create(
 							ToggleCircle,
-							TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 							{Position = UDim2.new(0, 15, 0, 0)}
 						):Play()
 						TweenService:Create(
 							UIStroke8,
-							TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 							{Color = GuiConfig.Color, Transparency = 0}
 						):Play()
 						TweenService:Create(
 							FeatureFrame2,
-							TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 							{BackgroundColor3 = GuiConfig.Color, BackgroundTransparency = 0} 
 						):Play()
 					else
 						TweenService:Create(
 							ToggleTitle,
-							TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 							{TextColor3 = Color3.fromRGB(230.77499270439148, 230.77499270439148, 230.77499270439148)}
 						):Play()
 						TweenService:Create(
 							ToggleCircle,
-							TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 							{Position = UDim2.new(0, 0, 0, 0)}
 						):Play()
 						TweenService:Create(
 							UIStroke8,
-							TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 							{Color = Color3.fromRGB(255, 255, 255), Transparency = 0.9}
 						):Play()
 						TweenService:Create(
 							FeatureFrame2,
-							TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 							{BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.9200000166893005}
 						):Play()
 					end
@@ -3674,6 +3775,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 
 				local function beginDrag(input)
 					if dragging then return end
+					setControlDragging(true)
 					if input.UserInputType == Enum.UserInputType.MouseButton1 then
 						dragging = true
 						activeTouch = nil
@@ -3686,6 +3788,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 							if input.UserInputState == Enum.UserInputState.End and activeTouch == input then
 								dragging = false
 								activeTouch = nil
+								setControlDragging(false)
 								SliderConfig.Callback(SliderFunc.Value)
 							end
 						end)
@@ -3704,7 +3807,8 @@ if type(GuiConfig.MobileToggle) == "table" then
 					if dragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
 						dragging = false
 						activeTouch = nil
-						SliderConfig.Callback(SliderFunc.Value)
+						setControlDragging(false)
+								SliderConfig.Callback(SliderFunc.Value)
 					end
 				end)
 
@@ -4108,33 +4212,33 @@ if type(GuiConfig.MobileToggle) == "table" then
 								if isSelected then
 									TweenService:Create(
 										chooseStroke,
-										TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 										{Transparency = 0}
 									):Play()
 									TweenService:Create(
 										chooseFrame,
-										TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 										{Size = UDim2.new(0, 1, 0, 12)}
 									):Play()
 									TweenService:Create(
 										Drop,
-										TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										TweenInfo.new(0.24, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 										{BackgroundTransparency = 0.935}
 									):Play()
 								else
 									TweenService:Create(
 										chooseFrame,
-										TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										TweenInfo.new(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 										{Size = UDim2.new(0, 0, 0, 0)}
 									):Play()
 									TweenService:Create(
 										chooseStroke,
-										TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										TweenInfo.new(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 										{Transparency = 0.999}
 									):Play()
 									TweenService:Create(
 										Drop,
-										TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										TweenInfo.new(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
 										{BackgroundTransparency = 0.999}
 									):Play()
 								end
@@ -4617,20 +4721,24 @@ if type(GuiConfig.MobileToggle) == "table" then
 
 				local lockedScroll = nil
 				local function lockScroll(on)
-					if on then
-						if lockedScroll then return end
-						local p = Row.Parent
-						while p and not p:IsA("ScrollingFrame") do
-							p = p.Parent
-						end
-						if p and p.ScrollingEnabled then
-							lockedScroll = p
-							p.ScrollingEnabled = false
-						end
-					elseif lockedScroll then
-						lockedScroll.ScrollingEnabled = true
-						lockedScroll = nil
-					end
+				    if on then
+				        setControlDragging(true)
+				        if lockedScroll then return end
+				        local p = Row.Parent
+				        while p and not p:IsA("ScrollingFrame") do
+				            p = p.Parent
+				        end
+				        if p and p.ScrollingEnabled then
+				            lockedScroll = p
+				            p.ScrollingEnabled = false
+				        end
+				    else
+				        setControlDragging(false)
+				        if lockedScroll then
+				            lockedScroll.ScrollingEnabled = true
+				            lockedScroll = nil
+				        end
+				    end
 				end
 				SVHit.InputBegan:Connect(function(input)
 					if isPress(input) then
@@ -4818,6 +4926,16 @@ if type(GuiConfig.MobileToggle) == "table" then
 		end
 		CountTab = CountTab + 1
 		return Sections
+	end
+	-- intro: rise and fade in when the window is built (GuiConfig.Intro = false to skip)
+	if GuiConfig.Intro ~= false and DropShadowHolder.Visible then
+	    local targetT = Main.BackgroundTransparency
+	    local basePos = DropShadowHolder.Position
+	    Main.BackgroundTransparency = 1
+	    DropShadowHolder.Position = basePos + UDim2.new(0, 0, 0, 16)
+	    local introInfo = TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	    TweenService:Create(Main, introInfo, {BackgroundTransparency = targetT}):Play()
+	    TweenService:Create(DropShadowHolder, introInfo, {Position = basePos}):Play()
 	end
 	return Tabs
 end
