@@ -209,12 +209,27 @@ function CircleClick(Button, X, Y)
 		end
 
 		local Time = 0.5
-		Circle:TweenSizeAndPosition(UDim2.new(0, Size, 0, Size), UDim2.new(0.5, -Size/2, 0.5, -Size/2), "Out", "Quad", Time, false, nil)
-		for i=1,10 do
-			Circle.ImageTransparency = Circle.ImageTransparency + 0.01
-			wait(Time/10)
+		local targetSize = UDim2.new(0, Size, 0, Size)
+		local targetPosition = UDim2.new(0.5, -Size/2, 0.5, -Size/2)
+		-- Legacy GuiObject:TweenSizeAndPosition errors when the control has
+		-- already been detached from PlayerGui. Tween only while it is in game.
+		if Button:IsDescendantOf(game) and Circle:IsDescendantOf(game) then
+			local rippleTween = TweenService:Create(
+				Circle,
+				TweenInfo.new(Time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{Size = targetSize, Position = targetPosition}
+			)
+			rippleTween:Play()
+		else
+			Circle.Size = targetSize
+			Circle.Position = targetPosition
 		end
-		Circle:Destroy()
+		for i = 1, 10 do
+			if not Circle.Parent then break end
+			Circle.ImageTransparency = math.min(1, Circle.ImageTransparency + 0.01)
+			task.wait(Time / 10)
+		end
+		if Circle.Parent then Circle:Destroy() end
 	end)
 end
 
@@ -449,7 +464,7 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 	DropShadowHolder.Name = "DropShadowHolder"
 	DropShadowHolder.Parent = NotifyFrameReal
 
-	DropShadow.Image = "rbxassetid://6015897843"
+	DropShadow.Image = ""
 	DropShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
 	DropShadow.ImageTransparency = 0.5
 	DropShadow.ScaleType = Enum.ScaleType.Slice
@@ -624,6 +639,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	GuiConfig.Color = GuiConfig.Color or Color3.fromRGB(255, 0, 255)
 	GuiConfig.Blur = GuiConfig.Blur == true
 	GuiConfig.BlurSize = tonumber(GuiConfig.BlurSize) or SharedBlur.Size
+	-- GuiConfig.Size optional: {X=480,Y=320} or UDim2 — independent of maximize
 	GuiConfig["Logo Player"] = GuiConfig["Logo Player"] or "https://www.roblox.com/headshot-thumbnail/image?userId="..game:GetService("Players").LocalPlayer.UserId .."&width=420&height=420&format=png"
 	GuiConfig["Name Player"] = GuiConfig["Name Player"] or tostring(game:GetService("Players").LocalPlayer.Name)
 	GuiConfig["Tab Width"] = GuiConfig["Tab Width"] or 120
@@ -708,6 +724,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	end
 	local function applyThemeToObject(object)
 		if not object or not object.Parent then return end
+		if object:GetAttribute("FlurRaw") then return end
 		local role = object:GetAttribute("FlurThemeRole")
 		if object:IsA("UIGradient") then
 			object.Color = ColorSequence.new({
@@ -743,6 +760,19 @@ function FlurioreLib:MakeGui(GuiConfig)
 		end
 	end
 
+	for _, gui in ipairs(CoreGui:GetChildren()) do
+		if gui.Name == "HirimiGui" then
+			pcall(function() gui:Destroy() end)
+		end
+	end
+	local okPg, pg = pcall(function() return LocalPlayer:FindFirstChild("PlayerGui") end)
+	if okPg and pg then
+		for _, gui in ipairs(pg:GetChildren()) do
+			if gui.Name == "HirimiGui" then
+				pcall(function() gui:Destroy() end)
+			end
+		end
+	end
 	local HirimiGui = Instance.new("ScreenGui");
 	local DropShadowHolder = Instance.new("Frame");
 	local DropShadow = Instance.new("ImageLabel");
@@ -798,7 +828,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	
 	local InitialViewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600)
 	DropShadowHolder.Position = UDim2.new(0, math.max(0, (InitialViewport.X - DropShadowHolder.Size.X.Offset) / 2), 0, math.max(0, (InitialViewport.Y - DropShadowHolder.Size.Y.Offset) / 2))
-	DropShadow.Image = "rbxassetid://6015897843"
+	DropShadow.Image = ""
 	DropShadow.ImageColor3 = Color3.fromRGB(15, 15, 15)
 	DropShadow.ImageTransparency = 0.5
 	DropShadow.ScaleType = Enum.ScaleType.Slice
@@ -826,7 +856,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 	UICorner.Parent = Main
 
 	UIStroke.Color = Color3.fromRGB(50, 50, 50)
-	UIStroke.Thickness = 1.600000023841858
+	UIStroke.Thickness = 1
+	UIStroke.Transparency = 0.5
 	UIStroke.Parent = Main
 
 	Top.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -1002,7 +1033,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	local SearchBox = Instance.new("TextBox")
 	SearchBox.Name = "SearchBox"
 	SearchBox:SetAttribute("FlurThemeRole", "MutedText")
-	SearchBox.PlaceholderText = "Search..."
+	SearchBox.PlaceholderText = tostring(GuiConfig.SearchPlaceholder or "Search...")
 	SearchBox.Text = ""
 	SearchBox.Font = Enum.Font.Gotham
 	SearchBox.TextSize = 12
@@ -1241,53 +1272,249 @@ function FlurioreLib:MakeGui(GuiConfig)
 		return GuiFunc:SetTheme({Accent = color})
 	end
 
-	local windowOpacity = 0.1
+	local windowOpacity = 0.3
 	local blurEnabled = false
 	local blurOwned = false
+	local blurFrost = 0.35
 	local solidOpacity = windowOpacity
+
+	local bgImage = Instance.new("ImageLabel")
+	bgImage.Name = "BackgroundImage"
+	bgImage.BackgroundTransparency = 1
+	bgImage.BorderSizePixel = 0
+	bgImage.Size = UDim2.new(1, 0, 1, 0)
+	bgImage.Image = ""
+	bgImage.ScaleType = Enum.ScaleType.Crop
+	bgImage.ImageTransparency = 0.35
+	bgImage.Visible = false
+	bgImage.ZIndex = 0
+	bgImage.Parent = Main
+	local bgImageCorner = Instance.new("UICorner")
+	bgImageCorner.CornerRadius = UDim.new(0, 8)
+	bgImageCorner.Parent = bgImage
 
 	local function applyBackgroundLook()
 		if blurEnabled then
-			Main.BackgroundTransparency = math.clamp(math.max(windowOpacity, 0.35), 0.35, 0.85)
+			Main.BackgroundTransparency = math.clamp(math.max(windowOpacity, blurFrost), 0.2, 0.92)
 		else
 			Main.BackgroundTransparency = windowOpacity
 		end
 	end
 
+	local opacityLayers = { Main = windowOpacity, Top = 0.999, Section = 0.935 }
+	local sectionSurfaceFrames = {}
+	local windowCorner = 8
+	local accentStrokeTransparency = 0
+	local flagPrefix = ""
+	local blurAnimate = true
+
 	function GuiFunc:SetOpacity(value)
+		if type(value) == "table" then
+			if value.Main ~= nil then
+				windowOpacity = math.clamp(tonumber(value.Main) or windowOpacity, 0, 0.95)
+				opacityLayers.Main = windowOpacity
+			end
+			if value.Top ~= nil then
+				opacityLayers.Top = math.clamp(tonumber(value.Top) or opacityLayers.Top, 0, 1)
+				Top.BackgroundTransparency = opacityLayers.Top
+			end
+			if value.Section ~= nil then
+				opacityLayers.Section = math.clamp(tonumber(value.Section) or opacityLayers.Section, 0, 1)
+				for _, fr in ipairs(sectionSurfaceFrames) do
+					if fr and fr.Parent then
+						fr.BackgroundTransparency = opacityLayers.Section
+					end
+				end
+			end
+			solidOpacity = windowOpacity
+			applyBackgroundLook()
+			return true
+		end
 		local n = tonumber(value)
 		if not n then return false end
 		windowOpacity = math.clamp(n, 0, 0.95)
+		opacityLayers.Main = windowOpacity
 		solidOpacity = windowOpacity
 		applyBackgroundLook()
 		return true
 	end
 
 	function GuiFunc:GetOpacity()
-		return windowOpacity
+		return windowOpacity, {
+			Main = windowOpacity,
+			Top = opacityLayers.Top,
+			Section = opacityLayers.Section,
+		}
+	end
+
+	function GuiFunc:SetCornerRadius(px)
+		local n = tonumber(px)
+		if not n then return false end
+		windowCorner = math.clamp(math.floor(n), 0, 32)
+		if UICorner then UICorner.CornerRadius = UDim.new(0, windowCorner) end
+		if bgImageCorner then bgImageCorner.CornerRadius = UDim.new(0, windowCorner) end
+		return true
+	end
+
+	function GuiFunc:GetCornerRadius()
+		return windowCorner
+	end
+
+	function GuiFunc:SetAccentTransparency(value)
+		local n = tonumber(value)
+		if not n then return false end
+		accentStrokeTransparency = math.clamp(n, 0, 1)
+		return true
+	end
+
+	function GuiFunc:GetAccentTransparency()
+		return accentStrokeTransparency
+	end
+
+	function GuiFunc:SetFlagPrefix(prefix)
+		flagPrefix = tostring(prefix or "")
+		return true
+	end
+
+	function GuiFunc:GetFlagPrefix()
+		return flagPrefix
+	end
+
+	function GuiFunc:SetBlurAnimate(enabled)
+		blurAnimate = not not enabled
+		return true
+	end
+
+	local function resolveFlagName(name)
+		if type(name) ~= "string" or name == "" then return name end
+		if flagPrefix ~= "" and string.sub(name, 1, #flagPrefix) ~= flagPrefix then
+			return flagPrefix .. name
+		end
+		return name
+	end
+
+	-- Window "blur" is local frosting only (higher panel transparency).
+	-- It does NOT enable Lighting.BlurEffect (that would blur the whole screen).
+	-- Real glass (opt-in: GuiConfig.RealGlass = true).
+	-- A glass part is kept in front of the camera at the window rect, and DepthOfField
+	-- is focused on it. GuiConfig.RealGlassIntensity (0..1) sets the far blur strength.
+	do
+		local REAL_GLASS_DISTANCE = 2
+		local RunService = game:GetService("RunService")
+		local GuiService = game:GetService("GuiService")
+		local realGlass = {Enabled = false, Part = nil, DoF = nil, Conn = nil}
+
+		local function qualityAllows()
+			local ok, level = pcall(function() return settings().Rendering.QualityLevel end)
+			if not ok then return true end
+			local v = typeof(level) == "EnumItem" and level.Value or tonumber(level) or 0
+			return v <= 0 or v >= 8
+		end
+
+		local function destroyParts()
+			if realGlass.Conn then realGlass.Conn:Disconnect(); realGlass.Conn = nil end
+			if realGlass.Part then realGlass.Part:Destroy(); realGlass.Part = nil end
+			if realGlass.DoF then realGlass.DoF:Destroy(); realGlass.DoF = nil end
+		end
+
+		local function updateRealGlass()
+			local part, dof = realGlass.Part, realGlass.DoF
+			if not part or not dof then return end
+			local cam = workspace.CurrentCamera
+			local size = DropShadowHolder.AbsoluteSize
+			if not cam or not HirimiGui.Enabled or not DropShadowHolder.Visible or size.X <= 0 or size.Y <= 0 then
+				part.Transparency = 1
+				dof.Enabled = false
+				return
+			end
+			local vp = cam.ViewportSize
+			if vp.X <= 0 or vp.Y <= 0 then return end
+			local topLeft = GuiService:GetGuiInset()
+			local inset = HirimiGui.IgnoreGuiInset and Vector2.new(0, 0) or Vector2.new(topLeft.X, topLeft.Y)
+			local pos = DropShadowHolder.AbsolutePosition + inset
+			local d = REAL_GLASS_DISTANCE
+			-- Camera.FieldOfView is vertical; half extents of the view plane at distance d
+			local halfH = d * math.tan(math.rad(cam.FieldOfView) / 2)
+			local halfW = halfH * vp.X / vp.Y
+			local cx = (pos.X + size.X / 2) / vp.X * 2 - 1
+			local cy = 1 - (pos.Y + size.Y / 2) / vp.Y * 2
+			part.Size = Vector3.new(size.X / vp.X * 2 * halfW, size.Y / vp.Y * 2 * halfH, 0.1)
+			part.CFrame = cam.CFrame * CFrame.new(cx * halfW, cy * halfH, -d)
+			part.Transparency = 0.85
+			dof.Enabled = true
+		end
+
+		local function setRealGlass(enabled)
+			enabled = (not not enabled) and qualityAllows()
+			if enabled == realGlass.Enabled then return enabled end
+			realGlass.Enabled = enabled
+			if not enabled then
+				destroyParts()
+				return false
+			end
+			local part = Instance.new("Part")
+			part.Name = "FlurRealGlass"
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanQuery = false
+			part.CanTouch = false
+			part.CastShadow = false
+			part.Material = Enum.Material.Glass
+			part.Color = Color3.fromRGB(230, 236, 255)
+			part.Transparency = 1
+			part.Parent = workspace
+			local dof = Instance.new("DepthOfFieldEffect")
+			dof.Name = "FlurRealGlassDoF"
+			dof.FocusDistance = REAL_GLASS_DISTANCE
+			dof.InFocusRadius = 3
+			dof.NearIntensity = 0
+			dof.FarIntensity = math.clamp(tonumber(GuiConfig.RealGlassIntensity) or 0.5, 0, 1)
+			dof.Enabled = false
+			dof.Parent = Lighting
+			realGlass.Part = part
+			realGlass.DoF = dof
+			realGlass.Conn = RunService.RenderStepped:Connect(updateRealGlass)
+			return true
+		end
+
+		function GuiFunc:SetRealGlass(enabled)
+			return setRealGlass(enabled)
+		end
+
+		function GuiFunc:GetRealGlass()
+			return realGlass.Enabled
+		end
 	end
 
 	function GuiFunc:SetBlur(enabled)
 		enabled = not not enabled
 		if enabled == blurEnabled then return true end
 		blurEnabled = enabled
-		if enabled then
-			if not blurOwned then
-				acquireSharedBlur()
-				blurOwned = true
-			end
+		if blurAnimate then
+			local target = blurEnabled and math.clamp(math.max(windowOpacity, blurFrost), 0.2, 0.92) or windowOpacity
+			TweenService:Create(Main, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				BackgroundTransparency = target,
+			}):Play()
 		else
-			if blurOwned then
-				releaseSharedBlur()
-				blurOwned = false
-			end
+			applyBackgroundLook()
 		end
-		applyBackgroundLook()
 		return true
 	end
 
 	function GuiFunc:GetBlur()
 		return blurEnabled
+	end
+
+	function GuiFunc:SetBlurAmount(amount)
+		local n = tonumber(amount)
+		if not n then return false end
+		blurFrost = math.clamp(n, 0.2, 0.9)
+		applyBackgroundLook()
+		return true
+	end
+
+	function GuiFunc:GetBlurAmount()
+		return blurFrost
 	end
 
 	function GuiFunc:SetBlurSize(size)
@@ -1296,6 +1523,63 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 	function GuiFunc:GetBlurSize()
 		return SharedBlur.Size
+	end
+
+	function GuiFunc:SetBackgroundImage(image)
+		if not bgImage then return false end
+		if image == nil or image == false or image == "" then
+			bgImage.Image = ""
+			bgImage.Visible = false
+			return true
+		end
+		bgImage.Image = tostring(image)
+		bgImage.Visible = true
+		return true
+	end
+
+	function GuiFunc:SetBackgroundImageTransparency(value)
+		local n = tonumber(value)
+		if not n or not bgImage then return false end
+		bgImage.ImageTransparency = math.clamp(n, 0, 1)
+		return true
+	end
+
+	function GuiFunc:GetBackgroundImage()
+		if not bgImage or not bgImage.Visible then return "" end
+		return bgImage.Image
+	end
+
+	function GuiFunc:SetBackgroundScaleType(scaleType)
+		if not bgImage then return false end
+		if typeof(scaleType) == "EnumItem" then
+			bgImage.ScaleType = scaleType
+			return true
+		end
+		local name = string.lower(tostring(scaleType or ""))
+		if name == "fit" then bgImage.ScaleType = Enum.ScaleType.Fit
+		elseif name == "stretch" then bgImage.ScaleType = Enum.ScaleType.Stretch
+		elseif name == "tile" then bgImage.ScaleType = Enum.ScaleType.Tile
+		else bgImage.ScaleType = Enum.ScaleType.Crop
+		end
+		return true
+	end
+
+	function GuiFunc:GetBackgroundScaleType()
+		if not bgImage then return "Crop" end
+		return bgImage.ScaleType.Name
+	end
+
+	function GuiFunc:SaveThemePreset(name)
+		if type(name) ~= "string" or name == "" then return false end
+		ThemePresets[name] = {
+			Accent = Theme.Accent,
+			Background = Theme.Background,
+			Surface = Theme.Surface,
+			Text = Theme.Text,
+			MutedText = Theme.MutedText,
+			Border = Theme.Border,
+		}
+		return true
 	end
 
 	function GuiFunc:SetThemePreset(name)
@@ -1339,6 +1623,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 	local oldDestroy = GuiFunc.DestroyGui
 	function GuiFunc:DestroyGui()
+		GuiFunc:SetRealGlass(false)
 		if blurOwned then
 			releaseSharedBlur()
 			blurOwned = false
@@ -1391,6 +1676,18 @@ function FlurioreLib:MakeGui(GuiConfig)
 		return frame and frame:GetAttribute("Locked") == true
 	end
 
+	local autoSaveFilters = {
+		Toggle = false,
+		Slider = true,
+		Input = true,
+		Dropdown = true,
+		Keybind = true,
+		ColorPicker = true,
+		ColorCycle = true,
+		Theme = true,
+		Scale = true,
+	}
+
 	local function scheduleAutoSave()
 		if not autoSaveFolder or not autoSaveName then return end
 		autoSaveToken = autoSaveToken + 1
@@ -1403,10 +1700,29 @@ function FlurioreLib:MakeGui(GuiConfig)
 		end)
 	end
 
-	function GuiFunc:EnableAutoSave(folder, name)
+	function GuiFunc:EnableAutoSave(folder, name, filters)
 		if type(folder) ~= "string" or type(name) ~= "string" then return false end
 		autoSaveFolder, autoSaveName = folder, name
+		if type(filters) == "table" then
+			for k, v in pairs(filters) do
+				if autoSaveFilters[k] ~= nil then
+					autoSaveFilters[k] = not not v
+				end
+			end
+		end
 		return true
+	end
+
+	function GuiFunc:SetAutoSaveFilter(kind, enabled)
+		if autoSaveFilters[kind] == nil then return false end
+		autoSaveFilters[kind] = not not enabled
+		return true
+	end
+
+	function GuiFunc:GetAutoSaveFilter()
+		local out = {}
+		for k, v in pairs(autoSaveFilters) do out[k] = v end
+		return out
 	end
 
 	function GuiFunc:DisableAutoSave()
@@ -1414,19 +1730,64 @@ function FlurioreLib:MakeGui(GuiConfig)
 		return true
 	end
 
-	function GuiFunc:NotifyFlagChanged()
+	local autoSaveFlagAllow = nil -- nil = all allowed flags by kind filter; set = only these flag names
+	local autoSaveFlagDeny = {}
+
+	function GuiFunc:SetAutoSaveFlags(list)
+		if list == nil then
+			autoSaveFlagAllow = nil
+			return true
+		end
+		if type(list) ~= "table" then return false end
+		autoSaveFlagAllow = {}
+		for _, name in ipairs(list) do
+			if type(name) == "string" then
+				autoSaveFlagAllow[name] = true
+				autoSaveFlagAllow[resolveFlagName(name)] = true
+			end
+		end
+		return true
+	end
+
+	function GuiFunc:DenyAutoSaveFlag(flagName)
+		if type(flagName) ~= "string" then return false end
+		autoSaveFlagDeny[flagName] = true
+		autoSaveFlagDeny[resolveFlagName(flagName)] = true
+		return true
+	end
+
+	function GuiFunc:AllowAutoSaveFlag(flagName)
+		if type(flagName) ~= "string" then return false end
+		autoSaveFlagDeny[flagName] = nil
+		autoSaveFlagDeny[resolveFlagName(flagName)] = nil
+		if autoSaveFlagAllow then
+			autoSaveFlagAllow[flagName] = true
+			autoSaveFlagAllow[resolveFlagName(flagName)] = true
+		end
+		return true
+	end
+
+	function GuiFunc:NotifyFlagChanged(kind, flagName)
+		if kind and autoSaveFilters[kind] == false then return end
+		if type(flagName) == "string" then
+			local resolved = resolveFlagName(flagName)
+			if autoSaveFlagDeny[flagName] or autoSaveFlagDeny[resolved] then return end
+			if autoSaveFlagAllow and not (autoSaveFlagAllow[flagName] or autoSaveFlagAllow[resolved]) then return end
+		end
 		scheduleAutoSave()
 	end
 
-	function GuiFunc:RegisterFlag(flag, getFn, setFn)
+	function GuiFunc:RegisterFlag(flag, getFn, setFn, kind)
 		if type(flag) ~= "string" or flag == "" then return false end
 		if type(getFn) ~= "function" or type(setFn) ~= "function" then return false end
+		flag = resolveFlagName(flag)
 		flagStore[flag] = {
 			Get = getFn,
 			Set = function(value)
 				setFn(value)
-				scheduleAutoSave()
+				GuiFunc:NotifyFlagChanged(kind, flag)
 			end,
+			Kind = kind,
 		}
 		return true
 	end
@@ -1665,7 +2026,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	local restSize = DropShadowHolder.Size
 	local restPos = DropShadowHolder.Position
 	local isMaximized = false
-	local windowTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	local windowTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
 	local function isHeaderOnlySize(size)
 		return size.Y.Scale == 0 and size.Y.Offset <= 40
@@ -1772,54 +2133,182 @@ function FlurioreLib:MakeGui(GuiConfig)
 	end)
 	Close.Activated:Connect(function()
 		CircleClick(Close, Mouse.X, Mouse.Y)
-		DropShadowHolder.Visible = false
+		GuiFunc:DestroyGui()
 	end)
 	local mobileToggleBtn = nil
-	function GuiFunc:ToggleUI()
-		DropShadowHolder.Visible = not DropShadowHolder.Visible
-		if mobileToggleBtn then
-			mobileToggleBtn.Text = DropShadowHolder.Visible and "−" or "+"
+	local mobileToggleIcon = nil
+	local mobileToggleCorner = nil
+	local mobileCfg = {
+		Size = 44,
+		Corner = 10,
+		Icon = "",
+		Smooth = true,
+		TweenTime = 0.22,
+		Position = UDim2.new(0, 14, 0, 14),
+	}
+
+	local function refreshMobileToggleVisual()
+		if not mobileToggleBtn then return end
+		local open = DropShadowHolder.Visible
+		if mobileToggleIcon and mobileToggleIcon.Visible then
+			mobileToggleBtn.Text = ""
+		else
+			mobileToggleBtn.Text = open and "−" or "+"
 		end
+	end
+
+	function GuiFunc:ToggleUI(smooth)
+		local useSmooth = mobileCfg.Smooth
+		if smooth ~= nil then useSmooth = not not smooth end
+		local opening = not DropShadowHolder.Visible
+		if useSmooth then
+			if opening then
+				DropShadowHolder.Visible = true
+				DropShadowHolder.BackgroundTransparency = 1
+				Main.BackgroundTransparency = 1
+				applyBackgroundLook()
+				local targetMain = Main.BackgroundTransparency
+				Main.BackgroundTransparency = 1
+				TweenService:Create(Main, TweenInfo.new(mobileCfg.TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundTransparency = targetMain,
+				}):Play()
+			else
+				local hideInfo = TweenInfo.new(mobileCfg.TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+				local tw = TweenService:Create(Main, hideInfo, {BackgroundTransparency = 1})
+				tw:Play()
+				tw.Completed:Connect(function()
+					DropShadowHolder.Visible = false
+					applyBackgroundLook()
+				end)
+			end
+		else
+			DropShadowHolder.Visible = not DropShadowHolder.Visible
+		end
+		refreshMobileToggleVisual()
 		return DropShadowHolder.Visible
 	end
 
-	function GuiFunc:SetMobileToggle(enabled)
-		enabled = not not enabled
-		if not enabled then
-			if mobileToggleBtn then
-				mobileToggleBtn:Destroy()
-				mobileToggleBtn = nil
-			end
-			return true
-		end
-		if mobileToggleBtn then return true end
+	local function ensureMobileToggle()
+		if mobileToggleBtn then return mobileToggleBtn end
 		local btn = Instance.new("TextButton")
 		btn.Name = "FlurioreMobileToggle"
 		btn.AutoButtonColor = false
 		btn.Font = Enum.Font.GothamBold
-		btn.TextSize = 22
-		btn.Text = DropShadowHolder.Visible and "−" or "+"
+		btn.TextSize = 20
 		btn.TextColor3 = Color3.fromRGB(245, 245, 245)
 		btn.BackgroundColor3 = Theme.Accent
-		btn.BackgroundTransparency = 0.15
+		btn.BackgroundTransparency = 0.12
 		btn.BorderSizePixel = 0
-		btn.AnchorPoint = Vector2.new(0, 1)
-		btn.Position = UDim2.new(0, 14, 1, -18)
-		btn.Size = UDim2.new(0, 44, 0, 44)
-		btn.ZIndex = 50
+		btn.AnchorPoint = Vector2.new(0, 0)
+		btn.Position = mobileCfg.Position
+		btn.Size = UDim2.new(0, mobileCfg.Size, 0, mobileCfg.Size)
+		btn.ZIndex = 100
 		btn.Parent = HirimiGui
 		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(1, 0)
+		corner.CornerRadius = UDim.new(0, mobileCfg.Corner)
 		corner.Parent = btn
+		mobileToggleCorner = corner
+		local icon = Instance.new("ImageLabel")
+		icon.Name = "Icon"
+		icon.BackgroundTransparency = 1
+		icon.BorderSizePixel = 0
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+		icon.Size = UDim2.new(0.55, 0, 0.55, 0)
+		icon.Image = mobileCfg.Icon
+		icon.Visible = mobileCfg.Icon ~= ""
+		icon.ZIndex = 101
+		icon.Parent = btn
+		mobileToggleIcon = icon
+		-- drag
+		local dragging, dragStart, startPos
+		btn.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				dragStart = input.Position
+				startPos = btn.Position
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then
+						dragging = false
+					end
+				end)
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(input)
+			if not dragging then return end
+			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+				local d = input.Position - dragStart
+				btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+				mobileCfg.Position = btn.Position
+			end
+		end)
+		local clickToken = 0
 		btn.Activated:Connect(function()
+			-- ignore if dragged far
 			GuiFunc:ToggleUI()
 		end)
 		mobileToggleBtn = btn
+		refreshMobileToggleVisual()
+		return btn
+	end
+
+	function GuiFunc:SetMobileToggle(enabledOrConfig)
+		if type(enabledOrConfig) == "table" then
+			local cfg = enabledOrConfig
+			if cfg.Size then mobileCfg.Size = math.clamp(tonumber(cfg.Size) or mobileCfg.Size, 28, 96) end
+			if cfg.Corner ~= nil then mobileCfg.Corner = math.clamp(tonumber(cfg.Corner) or mobileCfg.Corner, 0, 48) end
+			if cfg.Icon ~= nil then mobileCfg.Icon = tostring(cfg.Icon or "") end
+			if cfg.Smooth ~= nil then mobileCfg.Smooth = not not cfg.Smooth end
+			if cfg.TweenTime then mobileCfg.TweenTime = math.clamp(tonumber(cfg.TweenTime) or mobileCfg.TweenTime, 0.05, 1) end
+			if cfg.Position then mobileCfg.Position = cfg.Position end
+			if cfg.Enabled == false then
+				if mobileToggleBtn then mobileToggleBtn:Destroy(); mobileToggleBtn = nil; mobileToggleIcon = nil end
+				return true
+			end
+			local btn = ensureMobileToggle()
+			btn.Size = UDim2.new(0, mobileCfg.Size, 0, mobileCfg.Size)
+			btn.Position = mobileCfg.Position
+			if mobileToggleCorner then mobileToggleCorner.CornerRadius = UDim.new(0, mobileCfg.Corner) end
+			if mobileToggleIcon then
+				mobileToggleIcon.Image = mobileCfg.Icon
+				mobileToggleIcon.Visible = mobileCfg.Icon ~= ""
+			end
+			refreshMobileToggleVisual()
+			return true
+		end
+		local enabled = not not enabledOrConfig
+		if not enabled then
+			if mobileToggleBtn then mobileToggleBtn:Destroy(); mobileToggleBtn = nil; mobileToggleIcon = nil end
+			return true
+		end
+		ensureMobileToggle()
 		return true
 	end
 
 	function GuiFunc:GetMobileToggle()
 		return mobileToggleBtn ~= nil
+	end
+
+	function GuiFunc:SetMobileToggleSmooth(enabled)
+		mobileCfg.Smooth = not not enabled
+		return true
+	end
+
+	function GuiFunc:SetMobileToggleColor(color)
+		if typeof(color) ~= "Color3" then return false end
+		if mobileToggleBtn then mobileToggleBtn.BackgroundColor3 = color end
+		return true
+	end
+
+	function GuiFunc:ApplySafeAreaAuto()
+		local inset = { Top = 0, Bottom = 0, Left = 0, Right = 0 }
+		if UserInputService.TouchEnabled then
+			inset.Top = 12
+			inset.Bottom = 18
+			inset.Left = 8
+			inset.Right = 8
+		end
+		return GuiFunc:SetSafeArea(inset)
 	end
 	UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
@@ -1836,8 +2325,19 @@ function FlurioreLib:MakeGui(GuiConfig)
 	local CurrentViewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600)
 	local DesiredWidth = math.max(360, 150 + headerTitleTextWidth + headerDescriptionTextWidth)
 	DesiredWidth = math.min(DesiredWidth, math.max(320, CurrentViewport.X - 24))
-	DropShadowHolder.Size = UDim2.new(0, DesiredWidth, 0, 350)
-	DropShadowHolder.Position = UDim2.new(0, math.max(0, (CurrentViewport.X - DesiredWidth) / 2), 0, math.max(0, (CurrentViewport.Y - 350) / 2))
+	local initW, initH = DesiredWidth, 350
+	if type(GuiConfig.Size) == "table" then
+		initW = math.max(320, tonumber(GuiConfig.Size.X) or tonumber(GuiConfig.Size.Width) or initW)
+		initH = math.max(200, tonumber(GuiConfig.Size.Y) or tonumber(GuiConfig.Size.Height) or initH)
+	elseif typeof(GuiConfig.Size) == "UDim2" then
+		DropShadowHolder.Size = GuiConfig.Size
+		initW = DropShadowHolder.Size.X.Offset
+		initH = DropShadowHolder.Size.Y.Offset
+	end
+	if typeof(GuiConfig.Size) ~= "UDim2" then
+		DropShadowHolder.Size = UDim2.new(0, initW, 0, initH)
+	end
+	DropShadowHolder.Position = UDim2.new(0, math.max(0, (CurrentViewport.X - (typeof(GuiConfig.Size) == "UDim2" and DropShadowHolder.AbsoluteSize.X or initW)) / 2), 0, math.max(0, (CurrentViewport.Y - initH) / 2))
 	OldPos = DropShadowHolder.Position
 	MakeDraggable(Top, DropShadowHolder)
 	OldPos = DropShadowHolder.Position
@@ -1852,14 +2352,26 @@ function FlurioreLib:MakeGui(GuiConfig)
 	if GuiConfig.Blur then
 		GuiFunc:SetBlur(true)
 	end
+	if GuiConfig.RealGlass then
+		GuiFunc:SetRealGlass(true)
+	end
+if GuiConfig.BackgroundImage then
+		GuiFunc:SetBackgroundImage(GuiConfig.BackgroundImage)
+	end
+if GuiConfig.BackgroundImageTransparency then
+		GuiFunc:SetBackgroundImageTransparency(GuiConfig.BackgroundImageTransparency)
+	end
 	if type(GuiConfig.SafeArea) == "table" then
 		GuiFunc:SetSafeArea(GuiConfig.SafeArea)
 	end
 	if type(GuiConfig.ThemePreset) == "string" then
 		GuiFunc:SetThemePreset(GuiConfig.ThemePreset)
 	end
-	if GuiConfig.MobileToggle or UserInputService.TouchEnabled then
+	if GuiConfig.MobileToggle then
 		GuiFunc:SetMobileToggle(true)
+	end
+if type(GuiConfig.MobileToggle) == "table" then
+		GuiFunc:SetMobileToggle(GuiConfig.MobileToggle)
 	end
 
 	-- Apply the current palette to the window itself; future descendants are themed as they are created.
@@ -1893,7 +2405,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	DropShadowHolder1.Name = "DropShadowHolder"
 	DropShadowHolder1.Parent = MoreBlur
 
-	DropShadow1.Image = "rbxassetid://6015897843"
+	DropShadow1.Image = ""
 	DropShadow1.ImageColor3 = Color3.fromRGB(0, 0, 0)
 	DropShadow1.ImageTransparency = 0.5
 	DropShadow1.ScaleType = Enum.ScaleType.Slice
@@ -1951,7 +2463,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	UICorner36.Parent = DropdownSelect
 
 	UIStroke14.Color = Color3.fromRGB(255, 255, 255)
-	UIStroke14.Thickness = 2.5
+	UIStroke14.Thickness = 1.2
 	UIStroke14.Transparency = 0.8
 	UIStroke14.Parent = DropdownSelect
 
@@ -2096,7 +2608,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 			ChooseFrame.Parent = Tab
 
 			UIStroke2.Color = GuiConfig.Color
-			UIStroke2.Thickness = 1.600000023841858
+			UIStroke2.Thickness = 1
+			UIStroke2.Transparency = 0.45
 			UIStroke2.Parent = ChooseFrame
 
 			UICorner4.Parent = ChooseFrame
@@ -2117,14 +2630,14 @@ function FlurioreLib:MakeGui(GuiConfig)
 					if TabFrame.Name == "Tab" then
 						TweenService:Create(
 							TabFrame,
-							TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 							{BackgroundTransparency = 0.9990000128746033}
 						):Play()
 					end    
 				end
 				TweenService:Create(
 					Tab,
-					TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
+					TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 					{BackgroundTransparency = 0.9200000166893005}
 				):Play()
 				TweenService:Create(
@@ -2168,6 +2681,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 			Section.Size = UDim2.new(1, 0, 0, 30)
 			Section.Name = "Section"
 			Section.Parent = ScrolLayers
+			table.insert(sectionSurfaceFrames, Section)
+			Section.BackgroundTransparency = opacityLayers.Section
 
 			local SectionReal = Instance.new("Frame");
 			local UICorner = Instance.new("UICorner");
@@ -2179,7 +2694,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 			SectionReal.AnchorPoint = Vector2.new(0.5, 0)
 			SectionReal.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			SectionReal.BackgroundTransparency = 0.9350000023841858
+			SectionReal.BackgroundTransparency = 0.9990000128746033
 			SectionReal.BorderColor3 = Color3.fromRGB(0, 0, 0)
 			SectionReal.BorderSizePixel = 0
 			SectionReal.LayoutOrder = 1
@@ -2283,7 +2798,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 			UIListLayout2.Parent = SectionAdd
 			local OpenSection = true
 			local sectionAnimToken = 0
-			local sectionTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+			local sectionTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 			local function UpdateSizeScroll()
 				local OffsetY = 0
 				for _, child in ScrolLayers:GetChildren() do
@@ -2312,7 +2827,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 				TweenService:Create(SectionDecideFrame, sectionTweenInfo, {Size = UDim2.new(1, 0, 0, 2)}):Play()
 				sectionAnimToken = sectionAnimToken + 1
 				local token = sectionAnimToken
-				task.delay(0.28, function()
+				task.delay(0.3, function()
 					if token == sectionAnimToken then
 						UpdateSizeScroll()
 					end
@@ -2328,7 +2843,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 					TweenService:Create(Section, sectionTweenInfo, {Size = UDim2.new(1, 1, 0, 30)}):Play()
 					TweenService:Create(SectionDecideFrame, sectionTweenInfo, {Size = UDim2.new(0, 0, 0, 2)}):Play()
 					OpenSection = false
-					task.delay(0.28, function()
+					task.delay(0.3, function()
 						if token == sectionAnimToken then
 							UpdateSizeScroll()
 						end
@@ -2643,7 +3158,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 					CircleClick(ToggleButton, Mouse.X, Mouse.Y) 
 					ToggleFunc.Value = not ToggleFunc.Value
 					ToggleFunc:Set(ToggleFunc.Value)
-					if type(ToggleConfig.Flag) == "string" then GuiFunc:NotifyFlagChanged() end
+					if type(ToggleConfig.Flag) == "string" then GuiFunc:NotifyFlagChanged("Toggle", resolveFlagName(ToggleConfig.Flag)) end
 				end)
 				function ToggleFunc:Set(Value, fromGroup)
 					ToggleFunc.Value = not not Value
@@ -2718,7 +3233,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 						return ToggleFunc.Value
 					end, function(value)
 						ToggleFunc:Set(value)
-					end)
+					end, "Toggle")
 				end
 				CountItem = CountItem + 1
 				return attachElementControls(ToggleFunc, Toggle)
@@ -2785,6 +3300,9 @@ function FlurioreLib:MakeGui(GuiConfig)
 					Chip.Text = keyName(code)
 					if not skipCb then
 						KeybindConfig.Callback(code)
+						if type(KeybindConfig.Flag) == "string" then
+							GuiFunc:NotifyFlagChanged("Keybind", resolveFlagName(KeybindConfig.Flag))
+						end
 					end
 				end
 				applyKey(KeybindConfig.Default, true)
@@ -2825,7 +3343,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 						elseif typeof(value) == "EnumItem" then
 							KeybindFunc:Set(value)
 						end
-					end)
+					end, "Keybind")
 				end
 				CountItem = CountItem + 1
 				return attachElementControls(KeybindFunc, Row)
@@ -3019,7 +3537,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 					end
 					if not SkipCallback then
 						SliderConfig.Callback(Value)
-						if type(SliderConfig.Flag) == "string" then GuiFunc:NotifyFlagChanged() end
+						if type(SliderConfig.Flag) == "string" then GuiFunc:NotifyFlagChanged("Slider", resolveFlagName(SliderConfig.Flag)) end
 					end
 					return true
 				end
@@ -3084,7 +3602,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 						return SliderFunc.Value
 					end, function(value)
 						SliderFunc:Set(value, false, false)
-					end)
+					end, "Slider")
 				end
 				CountItem = CountItem + 1
 				return attachElementControls(SliderFunc, Slider)
@@ -3195,11 +3713,14 @@ function FlurioreLib:MakeGui(GuiConfig)
 				InputTextBox.Size = UDim2.new(1, -10, 1, -8)
 				InputTextBox.Name = "InputTextBox"
 				InputTextBox.Parent = InputFrame
-				function InputFunc:Set(Value)
+				function InputFunc:Set(Value, fromLoad)
 					Value = tostring(Value == nil and "" or Value)
 					InputTextBox.Text = Value
 					InputFunc.Value = Value
 					InputConfig.Callback(Value)
+					if not fromLoad and type(InputConfig.Flag) == "string" then
+						GuiFunc:NotifyFlagChanged("Input", resolveFlagName(InputConfig.Flag))
+					end
 				end
 				InputTextBox.FocusLost:Connect(function()
 					InputFunc:Set(InputTextBox.Text)
@@ -3214,7 +3735,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 						return InputFunc.Value
 					end, function(value)
 						InputFunc:Set(value)
-					end)
+					end, "Input")
 				end
 				CountItem = CountItem + 1
 				return attachElementControls(InputFunc, Input)
@@ -3441,39 +3962,53 @@ function FlurioreLib:MakeGui(GuiConfig)
 						if type(Value) ~= "table" then Value = {Value} end
 						DropdownFunc.Value = Value
 					end
-					for _, Drop in ScrollSelect:GetChildren() do
-						if Drop.Name ~= "UIListLayout" and not table.find(DropdownFunc.Value, Drop.OptionText.Text) then
-							TweenService:Create(
-								Drop.ChooseFrame,
-								TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{Size = UDim2.new(0, 0, 0, 0)}
-							):Play()
-							TweenService:Create(
-								Drop.ChooseFrame.UIStroke,
-								TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{Transparency = 0.999}
-							):Play()
-							TweenService:Create(
-								Drop,
-								TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{BackgroundTransparency = 0.999}
-							):Play()
-						elseif Drop.Name ~= "UIListLayout" and table.find(DropdownFunc.Value, Drop.OptionText.Text) then
-							TweenService:Create(
-								Drop.ChooseFrame.UIStroke,
-								TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{Transparency = 0}
-							):Play()
-							TweenService:Create(
-								Drop.ChooseFrame,
-								TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{Size = UDim2.new(0, 1, 0, 12)}
-							):Play()
-							TweenService:Create(
-								Drop,
-								TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-								{BackgroundTransparency = 0.935}
-							):Play()
+					local selectedValues = DropdownFunc.Value
+					if type(selectedValues) ~= "table" then
+						selectedValues = selectedValues == nil and {} or {selectedValues}
+						DropdownFunc.Value = selectedValues
+					end
+					for _, Drop in ipairs(ScrollSelect:GetChildren()) do
+						-- SearchRow and UIListLayout are not selectable option frames.
+						if Drop.Name == "Option" and Drop:IsA("GuiObject") then
+							local optionText = Drop:FindFirstChild("OptionText")
+							local chooseFrame = Drop:FindFirstChild("ChooseFrame")
+							local chooseStroke = chooseFrame and chooseFrame:FindFirstChild("UIStroke")
+							if optionText and chooseFrame and chooseStroke then
+								local isSelected = table.find(selectedValues, optionText.Text) ~= nil
+								if isSelected then
+									TweenService:Create(
+										chooseStroke,
+										TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{Transparency = 0}
+									):Play()
+									TweenService:Create(
+										chooseFrame,
+										TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{Size = UDim2.new(0, 1, 0, 12)}
+									):Play()
+									TweenService:Create(
+										Drop,
+										TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{BackgroundTransparency = 0.935}
+									):Play()
+								else
+									TweenService:Create(
+										chooseFrame,
+										TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{Size = UDim2.new(0, 0, 0, 0)}
+									):Play()
+									TweenService:Create(
+										chooseStroke,
+										TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{Transparency = 0.999}
+									):Play()
+									TweenService:Create(
+										Drop,
+										TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
+										{BackgroundTransparency = 0.999}
+									):Play()
+								end
+							end
 						end
 					end
 					local DropdownValueTable = table.concat(DropdownFunc.Value, ", ")
@@ -3483,6 +4018,9 @@ function FlurioreLib:MakeGui(GuiConfig)
 						OptionSelecting.Text = tostring(DropdownValueTable)
 					end
 					DropdownConfig.Callback(DropdownFunc.Value)
+					if type(DropdownConfig.Flag) == "string" then
+						GuiFunc:NotifyFlagChanged("Dropdown", resolveFlagName(DropdownConfig.Flag))
+					end
 				end
 				function DropdownFunc:AddOption(OptionName)
 					OptionName = tostring(OptionName or "Option")
@@ -3546,7 +4084,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 					ChooseFrame.Parent = Option
 				
 					UIStroke15.Color = GuiConfig.Color
-					UIStroke15.Thickness = 1.600000023841858
+					UIStroke15.Thickness = 1
+					UIStroke15.Transparency = 0.6
 					UIStroke15.Transparency = 0.999
 					UIStroke15.Parent = ChooseFrame
 				
@@ -3614,7 +4153,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 						return DropdownFunc.Value
 					end, function(value)
 						DropdownFunc:Set(value)
-					end)
+					end, "Dropdown")
 				end
 				CountItem = CountItem + 1
 				CountDropdown = CountDropdown + 1
@@ -3637,7 +4176,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 					TweenService:Create(Section, sectionTweenInfo, {Size = UDim2.new(1, 1, 0, 30)}):Play()
 					TweenService:Create(SectionDecideFrame, sectionTweenInfo, {Size = UDim2.new(0, 0, 0, 2)}):Play()
 					OpenSection = false
-					task.delay(0.28, function()
+					task.delay(0.3, function()
 						if token == sectionAnimToken then
 							UpdateSizeScroll()
 						end
@@ -3658,19 +4197,26 @@ function FlurioreLib:MakeGui(GuiConfig)
 						table.insert(kids, child)
 					end
 				end
+				table.sort(kids, function(a, b)
+					return (a.LayoutOrder or 0) < (b.LayoutOrder or 0)
+				end)
 				local total = #kids
 				if total <= virtualWindow then
 					for _, child in ipairs(kids) do child.Visible = true end
 					return
 				end
+				-- Estimate index from cumulative Size.Y (stable; does not rely on AbsolutePosition)
 				local canvasY = ScrolLayers.CanvasPosition.Y
-				local viewH = ScrolLayers.AbsoluteWindowSize.Y
+				local viewH = math.max(1, ScrolLayers.AbsoluteWindowSize.Y)
+				local acc = 0
 				local mid = canvasY + viewH * 0.5
-				local best, bestDist = 1, math.huge
+				local best = 1
 				for i, child in ipairs(kids) do
-					local cy = child.AbsolutePosition.Y - ScrolLayers.AbsolutePosition.Y + canvasY + child.AbsoluteSize.Y * 0.5
-					local d = math.abs(cy - mid)
-					if d < bestDist then best, bestDist = i, d end
+					local h = math.max(1, child.Size.Y.Offset)
+					local center = acc + h * 0.5
+					if center >= mid then best = i break end
+					acc = acc + h + 3
+					best = i
 				end
 				local half = math.floor(virtualWindow / 2)
 				local fromI = math.max(1, best - half)
@@ -3699,7 +4245,319 @@ function FlurioreLib:MakeGui(GuiConfig)
 			SectionAdd.ChildAdded:Connect(function()
 				if virtualEnabled then task.defer(refreshVirtual) end
 			end)
+
 			function Items:AddColorPicker(ColorConfig)
+				ColorConfig = ColorConfig or {}
+				ColorConfig.Title = ColorConfig.Title or "Color"
+				ColorConfig.Content = ColorConfig.Content or "Pick a color"
+				ColorConfig.Default = typeof(ColorConfig.Default) == "Color3" and ColorConfig.Default or Theme.Accent
+				ColorConfig.Callback = ColorConfig.Callback or function() end
+
+				local HEADER_H, PANEL_H = 46, 150
+				local expanded = false
+				local dragging = nil
+				local ColorFunc = {Value = ColorConfig.Default}
+				local Hue, Sat, Val = ColorConfig.Default:ToHSV()
+
+				local Row = Instance.new("Frame")
+				Row.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				Row.BackgroundTransparency = 0.935
+				Row.BorderSizePixel = 0
+				Row.ClipsDescendants = true
+				Row.LayoutOrder = CountItem
+				Row.Size = UDim2.new(1, 0, 0, HEADER_H)
+				Row.Name = "ColorPicker"
+				Row.Parent = SectionAdd
+				local Corner = Instance.new("UICorner")
+				Corner.CornerRadius = UDim.new(0, 4)
+				Corner.Parent = Row
+
+				local Header = Instance.new("TextButton")
+				Header.Text = ""
+				Header.AutoButtonColor = false
+				Header.BackgroundTransparency = 1
+				Header.Size = UDim2.new(1, 0, 0, HEADER_H)
+				Header.Name = "PickerHeader"
+				Header.Parent = Row
+
+				local Title = Instance.new("TextLabel")
+				Title.Font = Enum.Font.GothamBold
+				Title.Text = ColorConfig.Title
+				Title.TextColor3 = Color3.fromRGB(235, 235, 235)
+				Title.TextSize = 13
+				Title.TextXAlignment = Enum.TextXAlignment.Left
+				Title.BackgroundTransparency = 1
+				Title.Position = UDim2.new(0, 10, 0, 6)
+				Title.Size = UDim2.new(1, -70, 0, 14)
+				Title.Parent = Row
+
+				local Content = Instance.new("TextLabel")
+				Content.Font = Enum.Font.GothamBold
+				Content.Text = ColorConfig.Content
+				Content.TextColor3 = Color3.fromRGB(160, 160, 160)
+				Content.TextSize = 12
+				Content.TextXAlignment = Enum.TextXAlignment.Left
+				Content.BackgroundTransparency = 1
+				Content.Position = UDim2.new(0, 10, 0, 24)
+				Content.Size = UDim2.new(1, -70, 0, 14)
+				Content.Parent = Row
+
+				local Swatch = Instance.new("Frame")
+				Swatch.Name = "Swatch"
+				Swatch.BorderSizePixel = 0
+				Swatch.AnchorPoint = Vector2.new(1, 0.5)
+				Swatch.Position = UDim2.new(1, -12, 0.5, 0)
+				Swatch.Size = UDim2.new(0, 28, 0, 28)
+				Swatch.Parent = Row
+				local SwatchCorner = Instance.new("UICorner")
+				SwatchCorner.CornerRadius = UDim.new(0, 6)
+				SwatchCorner.Parent = Swatch
+
+				-- Inline panel: expands the row downward, so it stays inside the section's layout
+				local Panel = Instance.new("Frame")
+				Panel.Name = "PickerPanel"
+				Panel.BackgroundTransparency = 1
+				Panel.BorderSizePixel = 0
+				Panel.Position = UDim2.new(0, 10, 0, HEADER_H + 6)
+				Panel.Size = UDim2.new(1, -20, 0, PANEL_H - 12)
+				Panel.Parent = Row
+
+				local SV = Instance.new("Frame")
+				SV.Name = "SVArea"
+				SV.BorderSizePixel = 0
+				SV.Size = UDim2.new(1, -24, 1, 0)
+				SV.BackgroundColor3 = Color3.fromHSV(Hue, 1, 1)
+				SV:SetAttribute("FlurRaw", true)
+				SV.Parent = Panel
+				local SVCorner = Instance.new("UICorner")
+				SVCorner.CornerRadius = UDim.new(0, 4)
+				SVCorner.Parent = SV
+
+				local WhiteOver = Instance.new("Frame")
+				WhiteOver.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				WhiteOver.BorderSizePixel = 0
+				WhiteOver.Size = UDim2.new(1, 0, 1, 0)
+				WhiteOver:SetAttribute("FlurRaw", true)
+				WhiteOver.Parent = SV
+				local WhiteCorner = Instance.new("UICorner")
+				WhiteCorner.CornerRadius = UDim.new(0, 4)
+				WhiteCorner.Parent = WhiteOver
+				local WhiteGrad = Instance.new("UIGradient")
+				WhiteGrad.Transparency = NumberSequence.new({
+					NumberSequenceKeypoint.new(0, 0),
+					NumberSequenceKeypoint.new(1, 1),
+				})
+				WhiteGrad:SetAttribute("FlurRaw", true)
+				WhiteGrad.Parent = WhiteOver
+
+				local BlackOver = Instance.new("Frame")
+				BlackOver.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+				BlackOver.BorderSizePixel = 0
+				BlackOver.Size = UDim2.new(1, 0, 1, 0)
+				BlackOver:SetAttribute("FlurRaw", true)
+				BlackOver.Parent = SV
+				local BlackCorner = Instance.new("UICorner")
+				BlackCorner.CornerRadius = UDim.new(0, 4)
+				BlackCorner.Parent = BlackOver
+				local BlackGrad = Instance.new("UIGradient")
+				BlackGrad.Rotation = 90
+				BlackGrad.Transparency = NumberSequence.new({
+					NumberSequenceKeypoint.new(0, 1),
+					NumberSequenceKeypoint.new(1, 0),
+				})
+				BlackGrad:SetAttribute("FlurRaw", true)
+				BlackGrad.Parent = BlackOver
+
+				local SVKnob = Instance.new("Frame")
+				SVKnob.Name = "SVKnob"
+				SVKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+				SVKnob.Size = UDim2.new(0, 10, 0, 10)
+				SVKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				SVKnob.BorderSizePixel = 0
+				SVKnob.Parent = SV
+				local SVKnobCorner = Instance.new("UICorner")
+				SVKnobCorner.CornerRadius = UDim.new(1, 0)
+				SVKnobCorner.Parent = SVKnob
+				local SVKnobStroke = Instance.new("UIStroke")
+				SVKnobStroke.Name = "KnobStroke"
+				SVKnobStroke.Color = Color3.fromRGB(0, 0, 0)
+				SVKnobStroke.Thickness = 1.5
+				SVKnobStroke.Transparency = 0.2
+				SVKnobStroke.Parent = SVKnob
+
+				local HueBar = Instance.new("Frame")
+				HueBar.Name = "HueBar"
+				HueBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				HueBar.BorderSizePixel = 0
+				HueBar.Position = UDim2.new(1, -14, 0, 0)
+				HueBar.Size = UDim2.new(0, 14, 1, 0)
+				HueBar:SetAttribute("FlurRaw", true)
+				HueBar.Parent = Panel
+				local HueCorner = Instance.new("UICorner")
+				HueCorner.CornerRadius = UDim.new(0, 4)
+				HueCorner.Parent = HueBar
+				local HueKeys = {}
+				for i = 0, 6 do
+					local t = i / 6
+					table.insert(HueKeys, ColorSequenceKeypoint.new(t, Color3.fromHSV(t, 1, 1)))
+				end
+				local HueGrad = Instance.new("UIGradient")
+				HueGrad.Rotation = 90
+				HueGrad.Color = ColorSequence.new(HueKeys)
+				HueGrad:SetAttribute("FlurRaw", true)
+				HueGrad.Parent = HueBar
+
+				local HueKnob = Instance.new("Frame")
+				HueKnob.Name = "HueKnob"
+				HueKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+				HueKnob.Size = UDim2.new(1, 6, 0, 4)
+				HueKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				HueKnob.BorderSizePixel = 0
+				HueKnob.Parent = HueBar
+				local HueKnobCorner = Instance.new("UICorner")
+				HueKnobCorner.CornerRadius = UDim.new(1, 0)
+				HueKnobCorner.Parent = HueKnob
+				local HueKnobStroke = Instance.new("UIStroke")
+				HueKnobStroke.Name = "KnobStroke"
+				HueKnobStroke.Color = Color3.fromRGB(0, 0, 0)
+				HueKnobStroke.Thickness = 1
+				HueKnobStroke.Transparency = 0.2
+				HueKnobStroke.Parent = HueKnob
+
+				-- Transparent hit areas last so they sit on top of everything above
+				local SVHit = Instance.new("TextButton")
+				SVHit.Name = "SVHit"
+				SVHit.Text = ""
+				SVHit.AutoButtonColor = false
+				SVHit.BackgroundTransparency = 1
+				SVHit.Size = UDim2.new(1, 0, 1, 0)
+				SVHit.Parent = SV
+
+				local HueHit = Instance.new("TextButton")
+				HueHit.Name = "HueHit"
+				HueHit.Text = ""
+				HueHit.AutoButtonColor = false
+				HueHit.BackgroundTransparency = 1
+				HueHit.Size = UDim2.new(1, 0, 1, 0)
+				HueHit.Parent = HueBar
+
+				local function refresh(notify)
+					local c = Color3.fromHSV(Hue, Sat, Val)
+					ColorFunc.Value = c
+					Swatch.BackgroundColor3 = c
+					SV.BackgroundColor3 = Color3.fromHSV(Hue, 1, 1)
+					SVKnob.Position = UDim2.new(Sat, 0, 1 - Val, 0)
+					HueKnob.Position = UDim2.new(0.5, 0, Hue, 0)
+					if notify then
+						ColorConfig.Callback(c)
+						if type(ColorConfig.Flag) == "string" then
+							GuiFunc:NotifyFlagChanged("ColorPicker", resolveFlagName(ColorConfig.Flag))
+						end
+					end
+				end
+
+				local function setFromSV(x, y)
+					local p, s = SV.AbsolutePosition, SV.AbsoluteSize
+					Sat = math.clamp((x - p.X) / math.max(s.X, 1), 0, 1)
+					Val = 1 - math.clamp((y - p.Y) / math.max(s.Y, 1), 0, 1)
+					refresh(true)
+				end
+
+				local function setFromHue(y)
+					local p, s = HueBar.AbsolutePosition, HueBar.AbsoluteSize
+					Hue = math.clamp((y - p.Y) / math.max(s.Y, 1), 0, 1)
+					refresh(true)
+				end
+
+				local function isPress(input)
+					return input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch
+				end
+
+				local function isMove(input)
+					return input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch
+				end
+
+				local function applyInput(input)
+					if dragging == "sv" then
+						setFromSV(input.Position.X, input.Position.Y)
+					elseif dragging == "hue" then
+						setFromHue(input.Position.Y)
+					end
+				end
+
+				SVHit.InputBegan:Connect(function(input)
+					if isPress(input) then
+						dragging = "sv"
+						applyInput(input)
+					end
+				end)
+				HueHit.InputBegan:Connect(function(input)
+					if isPress(input) then
+						dragging = "hue"
+						applyInput(input)
+					end
+				end)
+				UserInputService.InputChanged:Connect(function(input)
+					if dragging and isMove(input) then applyInput(input) end
+				end)
+				UserInputService.InputEnded:Connect(function(input)
+					if dragging and isPress(input) then dragging = nil end
+				end)
+
+				local function setExpanded(v)
+					expanded = v
+					TweenService:Create(
+						Row,
+						TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+						{Size = UDim2.new(1, 0, 0, expanded and (HEADER_H + PANEL_H) or HEADER_H)}
+					):Play()
+				end
+				Header.Activated:Connect(function()
+					setExpanded(not expanded)
+				end)
+
+				function ColorFunc:Set(c)
+					if typeof(c) ~= "Color3" then return false end
+					Hue, Sat, Val = c:ToHSV()
+					refresh(true)
+					return true
+				end
+
+				function ColorFunc:SetHSV(h, s, v)
+					Hue = math.clamp(tonumber(h) or Hue, 0, 1)
+					Sat = math.clamp(tonumber(s) or Sat, 0, 1)
+					Val = math.clamp(tonumber(v) or Val, 0, 1)
+					refresh(true)
+					return true
+				end
+
+				function ColorFunc:SetExpanded(v)
+					setExpanded(not not v)
+					return true
+				end
+
+				refresh(false)
+
+				table.insert(searchIndex, {
+					frame = Row,
+					title = ColorConfig.Title,
+					content = ColorConfig.Content,
+				})
+				if type(ColorConfig.Flag) == "string" and ColorConfig.Flag ~= "" then
+					GuiFunc:RegisterFlag(ColorConfig.Flag, function()
+						local c = ColorFunc.Value
+						return {c.R, c.G, c.B}
+					end, function(value)
+						if type(value) == "table" and #value >= 3 then
+							ColorFunc:Set(Color3.new(value[1], value[2], value[3]))
+						end
+					end, "ColorPicker")
+				end
+				CountItem = CountItem + 1
+				return attachElementControls(ColorFunc, Row)
+			end
+
+			function Items:AddColorCycle(ColorConfig)
 				ColorConfig = ColorConfig or {}
 				ColorConfig.Title = ColorConfig.Title or "Color"
 				ColorConfig.Content = ColorConfig.Content or "Pick a color"
@@ -3712,7 +4570,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 				Row.BorderSizePixel = 0
 				Row.LayoutOrder = CountItem
 				Row.Size = UDim2.new(1, 0, 0, 46)
-				Row.Name = "ColorPicker"
+				Row.Name = "ColorCycle"
 				Row.Parent = SectionAdd
 				local Corner = Instance.new("UICorner")
 				Corner.CornerRadius = UDim.new(0, 4)
@@ -3750,11 +4608,14 @@ function FlurioreLib:MakeGui(GuiConfig)
 				SwatchCorner.CornerRadius = UDim.new(0, 6)
 				SwatchCorner.Parent = Swatch
 				local Hue, Sat, Val = ColorConfig.Default:ToHSV()
-				local function applyColor(c)
+				local function applyColor(c, fromLoad)
 					ColorFunc.Value = c
 					Swatch.BackgroundColor3 = c
 					Hue, Sat, Val = c:ToHSV()
 					ColorConfig.Callback(c)
+					if not fromLoad and type(ColorConfig.Flag) == "string" then
+						GuiFunc:NotifyFlagChanged("ColorCycle", resolveFlagName(ColorConfig.Flag))
+					end
 				end
 				function ColorFunc:Set(c)
 					if typeof(c) ~= "Color3" then return false end
@@ -3785,7 +4646,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 						if type(value) == "table" and #value >= 3 then
 							ColorFunc:Set(Color3.new(value[1], value[2], value[3]))
 						end
-					end)
+					end, "ColorCycle")
 				end
 				CountItem = CountItem + 1
 				return attachElementControls(ColorFunc, Row)

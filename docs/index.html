@@ -361,11 +361,24 @@ print(Section:IsOpen())</code></pre>
             <tr><td><code>Window:DestroyGui()</code></td><td>Removes the library window.</td></tr>
             <tr><td><code>Window:SetOpacity(number)</code></td><td>Sets opacity from 0 (solid) to 0.95 (more transparent).</td></tr>
             <tr><td><code>Window:SetToggleKey(KeyCode)</code></td><td>Changes the key used to show or hide the window.</td></tr>
+            <tr><td><code>Window:SetRealGlass(boolean)</code> / <code>GetRealGlass()</code></td><td>Turns the experimental glass effect on or off.</td></tr>
             <tr><td><code>Tab:SetBadge(text)</code> / <code>Tab:ClearBadge()</code></td><td>Sets or clears the tab badge.</td></tr>
             <tr><td><code>Section:Open()</code> / <code>Section:Close()</code></td><td>Opens or closes a section.</td></tr>
             <tr><td><code>Section:IsOpen()</code></td><td>Returns whether the section is open.</td></tr>
           </tbody></table></div>
           <p>Section closing hides its children before shrinking the height; opening expands the section before showing its children again.</p>
+          <h3>Real glass (experimental)</h3>
+          <p>Set <code>RealGlass = true</code> in <code>MakeGui</code>, or call <code>Window:SetRealGlass(true)</code>. A glass part locked to the window rect and a DepthOfField effect blur what is behind the panel. Lower the opacity so the blur shows through.</p>
+          <pre data-lang="Luau"><code>local Window = FlurioreLib:MakeGui({
+    NameHub = "My Hub",
+    RealGlass = true,
+    RealGlassIntensity = 0.5, -- 0 to 1
+})
+
+Window:SetOpacity(0.5)
+Window:SetRealGlass(false)
+print(Window:GetRealGlass())</code></pre>
+          <div class="callout warning"><span class="callout-icon">!</span><p><strong>Experimental and not runtime-tested.</strong> DepthOfField is a Lighting effect, so the blur may cover the whole screen rather than only the window. It is skipped when graphics quality is below level 8. Another script using DepthOfField in Lighting will conflict with it.</p></div>
         </section>
 
         <section class="doc-section" data-search-section>
@@ -433,7 +446,7 @@ local binds = Window:GetBinds() -- map of id -> KeyCode</code></pre>
 
         <section class="doc-section" data-search-section>
           <h2 class="section-heading" id="config">Config API</h2>
-          <p>Add a unique <code>Flag</code> to Toggle, Slider, Input, Dropdown or ColorPicker elements to include their values in config operations.</p>
+          <p>Add a unique <code>Flag</code> to Toggle, Slider, Input, Dropdown, Keybind, ColorPicker or ColorCycle elements to include their values in config operations.</p>
           <pre data-lang="Luau"><code>Section:AddToggle({
     Title = "Auto farm",
     Default = false,
@@ -555,6 +568,7 @@ Dropdown:Refresh({"One", "Two", "Three"}, "Two")
 -- Dropdown:Clear() removes options and selection.</code></pre>
           <p>The dropdown's <code>Value</code> is a table of selected option strings, even when <code>Multi = false</code>. <code>Options</code> holds the available strings.</p>
           <h3>Color picker</h3>
+          <p>Click the row to open a panel with a saturation/value square and a hue bar. Drag on either one. Any color can be chosen, including white, grey and black. <code>Callback</code> fires on every change while dragging.</p>
           <pre data-lang="Luau"><code>local Picker = Section:AddColorPicker({
     Title = "Accent",
     Content = "Choose an accent color.",
@@ -565,7 +579,23 @@ Dropdown:Refresh({"One", "Two", "Three"}, "Two")
     end,
 })
 
-Picker:Set(Color3.fromRGB(80, 200, 255))</code></pre>
+print(Picker.Value)
+Picker:Set(Color3.fromRGB(80, 200, 255))
+Picker:SetHSV(0.55, 0.85, 1) -- hue, saturation, value
+Picker:SetExpanded(true)</code></pre>
+          <h3>Color cycle</h3>
+          <p>A simpler control. Each click on the swatch steps the hue forward. Saturation and value are kept at a minimum, so it cannot produce white, grey or black. Use it for quick swaps; use the color picker when people need to choose a color.</p>
+          <pre data-lang="Luau"><code>local Cycle = Section:AddColorCycle({
+    Title = "Glow",
+    Content = "Click to step the hue.",
+    Default = Color3.fromRGB(255, 0, 255),
+    Flag = "glow_color", -- optional
+    Callback = function(color)
+        print(color)
+    end,
+})
+
+Cycle:Set(Color3.fromRGB(80, 200, 255))</code></pre>
         </section>
 
         <section class="doc-section" data-search-section>
@@ -617,6 +647,7 @@ Window:RenameConfig("FlurioreConfigs", "main", "backup")</code></pre>
             <li>Disk config methods rely on supported filesystem functions such as <code>writefile</code>, <code>readfile</code>, and optionally <code>makefolder</code>, <code>isfolder</code>, <code>listfiles</code> or <code>delfile</code>.</li>
             <li>UI descriptions wrap to their available width; slider precision comes from <code>Increment</code>, <code>Min</code> and <code>Max</code>.</li>
             <li>Closing sections and minimizing the window hide content before resizing to reduce clipped or jumping layouts.</li>
+            <li>Real glass is experimental; its DepthOfField effect can blur the whole screen. See Window API.</li>
             <li>Executor behavior can vary, and not every executor configuration has been runtime-tested.</li>
           </ul>
           <div class="callout warning"><span class="callout-icon">!</span><p><strong>Use responsibly.</strong> Run scripts only where allowed and review downloaded source before execution.</p></div>
