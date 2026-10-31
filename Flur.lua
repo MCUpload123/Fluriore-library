@@ -464,7 +464,7 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 	DropShadowHolder.Name = "DropShadowHolder"
 	DropShadowHolder.Parent = NotifyFrameReal
 
-	DropShadow.Image = "rbxassetid://6015897843"
+	DropShadow.Image = ""
 	DropShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
 	DropShadow.ImageTransparency = 0.5
 	DropShadow.ScaleType = Enum.ScaleType.Slice
@@ -827,7 +827,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	
 	local InitialViewport = (workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize) or Vector2.new(800, 600)
 	DropShadowHolder.Position = UDim2.new(0, math.max(0, (InitialViewport.X - DropShadowHolder.Size.X.Offset) / 2), 0, math.max(0, (InitialViewport.Y - DropShadowHolder.Size.Y.Offset) / 2))
-	DropShadow.Image = "rbxassetid://6015897843"
+	DropShadow.Image = ""
 	DropShadow.ImageColor3 = Color3.fromRGB(15, 15, 15)
 	DropShadow.ImageTransparency = 0.5
 	DropShadow.ScaleType = Enum.ScaleType.Slice
@@ -855,7 +855,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 	UICorner.Parent = Main
 
 	UIStroke.Color = Color3.fromRGB(50, 50, 50)
-	UIStroke.Thickness = 1.600000023841858
+	UIStroke.Thickness = 1
+	UIStroke.Transparency = 0.5
 	UIStroke.Parent = Main
 
 	Top.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -1270,10 +1271,10 @@ function FlurioreLib:MakeGui(GuiConfig)
 		return GuiFunc:SetTheme({Accent = color})
 	end
 
-	local windowOpacity = 0.1
+	local windowOpacity = 0.3
 	local blurEnabled = false
 	local blurOwned = false
-	local blurFrost = 0.45
+	local blurFrost = 0.35
 	local solidOpacity = windowOpacity
 
 	local bgImage = Instance.new("ImageLabel")
@@ -1393,6 +1394,97 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 	-- Window "blur" is local frosting only (higher panel transparency).
 	-- It does NOT enable Lighting.BlurEffect (that would blur the whole screen).
+	-- Real glass (opt-in: GuiConfig.RealGlass = true).
+	-- A glass part is kept in front of the camera at the window rect, and DepthOfField
+	-- is focused on it. GuiConfig.RealGlassIntensity (0..1) sets the far blur strength.
+	do
+		local REAL_GLASS_DISTANCE = 2
+		local RunService = game:GetService("RunService")
+		local GuiService = game:GetService("GuiService")
+		local realGlass = {Enabled = false, Part = nil, DoF = nil, Conn = nil}
+
+		local function qualityAllows()
+			local ok, level = pcall(function() return settings().Rendering.QualityLevel end)
+			if not ok then return true end
+			local v = typeof(level) == "EnumItem" and level.Value or tonumber(level) or 0
+			return v <= 0 or v >= 8
+		end
+
+		local function destroyParts()
+			if realGlass.Conn then realGlass.Conn:Disconnect(); realGlass.Conn = nil end
+			if realGlass.Part then realGlass.Part:Destroy(); realGlass.Part = nil end
+			if realGlass.DoF then realGlass.DoF:Destroy(); realGlass.DoF = nil end
+		end
+
+		local function updateRealGlass()
+			local part, dof = realGlass.Part, realGlass.DoF
+			if not part or not dof then return end
+			local cam = workspace.CurrentCamera
+			local size = DropShadowHolder.AbsoluteSize
+			if not cam or not HirimiGui.Enabled or not DropShadowHolder.Visible or size.X <= 0 or size.Y <= 0 then
+				part.Transparency = 1
+				dof.Enabled = false
+				return
+			end
+			local vp = cam.ViewportSize
+			if vp.X <= 0 or vp.Y <= 0 then return end
+			local topLeft = GuiService:GetGuiInset()
+			local inset = HirimiGui.IgnoreGuiInset and Vector2.new(0, 0) or Vector2.new(topLeft.X, topLeft.Y)
+			local pos = DropShadowHolder.AbsolutePosition + inset
+			local d = REAL_GLASS_DISTANCE
+			-- Camera.FieldOfView is vertical; half extents of the view plane at distance d
+			local halfH = d * math.tan(math.rad(cam.FieldOfView) / 2)
+			local halfW = halfH * vp.X / vp.Y
+			local cx = (pos.X + size.X / 2) / vp.X * 2 - 1
+			local cy = 1 - (pos.Y + size.Y / 2) / vp.Y * 2
+			part.Size = Vector3.new(size.X / vp.X * 2 * halfW, size.Y / vp.Y * 2 * halfH, 0.1)
+			part.CFrame = cam.CFrame * CFrame.new(cx * halfW, cy * halfH, -d)
+			part.Transparency = 0.85
+			dof.Enabled = true
+		end
+
+		local function setRealGlass(enabled)
+			enabled = (not not enabled) and qualityAllows()
+			if enabled == realGlass.Enabled then return enabled end
+			realGlass.Enabled = enabled
+			if not enabled then
+				destroyParts()
+				return false
+			end
+			local part = Instance.new("Part")
+			part.Name = "FlurRealGlass"
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanQuery = false
+			part.CanTouch = false
+			part.CastShadow = false
+			part.Material = Enum.Material.Glass
+			part.Color = Color3.fromRGB(230, 236, 255)
+			part.Transparency = 1
+			part.Parent = workspace
+			local dof = Instance.new("DepthOfFieldEffect")
+			dof.Name = "FlurRealGlassDoF"
+			dof.FocusDistance = REAL_GLASS_DISTANCE
+			dof.InFocusRadius = 3
+			dof.NearIntensity = 0
+			dof.FarIntensity = math.clamp(tonumber(GuiConfig.RealGlassIntensity) or 0.5, 0, 1)
+			dof.Enabled = false
+			dof.Parent = Lighting
+			realGlass.Part = part
+			realGlass.DoF = dof
+			realGlass.Conn = RunService.RenderStepped:Connect(updateRealGlass)
+			return true
+		end
+
+		function GuiFunc:SetRealGlass(enabled)
+			return setRealGlass(enabled)
+		end
+
+		function GuiFunc:GetRealGlass()
+			return realGlass.Enabled
+		end
+	end
+
 	function GuiFunc:SetBlur(enabled)
 		enabled = not not enabled
 		if enabled == blurEnabled then return true end
@@ -1530,6 +1622,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 	local oldDestroy = GuiFunc.DestroyGui
 	function GuiFunc:DestroyGui()
+		GuiFunc:SetRealGlass(false)
 		if blurOwned then
 			releaseSharedBlur()
 			blurOwned = false
@@ -1931,7 +2024,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	local restSize = DropShadowHolder.Size
 	local restPos = DropShadowHolder.Position
 	local isMaximized = false
-	local windowTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	local windowTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
 	local function isHeaderOnlySize(size)
 		return size.Y.Scale == 0 and size.Y.Offset <= 40
@@ -2257,6 +2350,9 @@ function FlurioreLib:MakeGui(GuiConfig)
 	if GuiConfig.Blur then
 		GuiFunc:SetBlur(true)
 	end
+	if GuiConfig.RealGlass then
+		GuiFunc:SetRealGlass(true)
+	end
 if GuiConfig.BackgroundImage then
 		GuiFunc:SetBackgroundImage(GuiConfig.BackgroundImage)
 	end
@@ -2307,7 +2403,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 	DropShadowHolder1.Name = "DropShadowHolder"
 	DropShadowHolder1.Parent = MoreBlur
 
-	DropShadow1.Image = "rbxassetid://6015897843"
+	DropShadow1.Image = ""
 	DropShadow1.ImageColor3 = Color3.fromRGB(0, 0, 0)
 	DropShadow1.ImageTransparency = 0.5
 	DropShadow1.ScaleType = Enum.ScaleType.Slice
@@ -2365,7 +2461,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 	UICorner36.Parent = DropdownSelect
 
 	UIStroke14.Color = Color3.fromRGB(255, 255, 255)
-	UIStroke14.Thickness = 2.5
+	UIStroke14.Thickness = 1.2
 	UIStroke14.Transparency = 0.8
 	UIStroke14.Parent = DropdownSelect
 
@@ -2510,7 +2606,8 @@ if type(GuiConfig.MobileToggle) == "table" then
 			ChooseFrame.Parent = Tab
 
 			UIStroke2.Color = GuiConfig.Color
-			UIStroke2.Thickness = 1.600000023841858
+			UIStroke2.Thickness = 1
+			UIStroke2.Transparency = 0.45
 			UIStroke2.Parent = ChooseFrame
 
 			UICorner4.Parent = ChooseFrame
@@ -2531,14 +2628,14 @@ if type(GuiConfig.MobileToggle) == "table" then
 					if TabFrame.Name == "Tab" then
 						TweenService:Create(
 							TabFrame,
-							TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
+							TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 							{BackgroundTransparency = 0.9990000128746033}
 						):Play()
 					end    
 				end
 				TweenService:Create(
 					Tab,
-					TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.InOut),
+					TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 					{BackgroundTransparency = 0.9200000166893005}
 				):Play()
 				TweenService:Create(
@@ -2595,7 +2692,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 
 			SectionReal.AnchorPoint = Vector2.new(0.5, 0)
 			SectionReal.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-			SectionReal.BackgroundTransparency = 0.9350000023841858
+			SectionReal.BackgroundTransparency = 0.9990000128746033
 			SectionReal.BorderColor3 = Color3.fromRGB(0, 0, 0)
 			SectionReal.BorderSizePixel = 0
 			SectionReal.LayoutOrder = 1
@@ -2699,7 +2796,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 			UIListLayout2.Parent = SectionAdd
 			local OpenSection = true
 			local sectionAnimToken = 0
-			local sectionTweenInfo = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+			local sectionTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 			local function UpdateSizeScroll()
 				local OffsetY = 0
 				for _, child in ScrolLayers:GetChildren() do
@@ -2728,7 +2825,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 				TweenService:Create(SectionDecideFrame, sectionTweenInfo, {Size = UDim2.new(1, 0, 0, 2)}):Play()
 				sectionAnimToken = sectionAnimToken + 1
 				local token = sectionAnimToken
-				task.delay(0.28, function()
+				task.delay(0.3, function()
 					if token == sectionAnimToken then
 						UpdateSizeScroll()
 					end
@@ -2744,7 +2841,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 					TweenService:Create(Section, sectionTweenInfo, {Size = UDim2.new(1, 1, 0, 30)}):Play()
 					TweenService:Create(SectionDecideFrame, sectionTweenInfo, {Size = UDim2.new(0, 0, 0, 2)}):Play()
 					OpenSection = false
-					task.delay(0.28, function()
+					task.delay(0.3, function()
 						if token == sectionAnimToken then
 							UpdateSizeScroll()
 						end
@@ -3985,7 +4082,8 @@ if type(GuiConfig.MobileToggle) == "table" then
 					ChooseFrame.Parent = Option
 				
 					UIStroke15.Color = GuiConfig.Color
-					UIStroke15.Thickness = 1.600000023841858
+					UIStroke15.Thickness = 1
+					UIStroke15.Transparency = 0.6
 					UIStroke15.Transparency = 0.999
 					UIStroke15.Parent = ChooseFrame
 				
@@ -4076,7 +4174,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 					TweenService:Create(Section, sectionTweenInfo, {Size = UDim2.new(1, 1, 0, 30)}):Play()
 					TweenService:Create(SectionDecideFrame, sectionTweenInfo, {Size = UDim2.new(0, 0, 0, 2)}):Play()
 					OpenSection = false
-					task.delay(0.28, function()
+					task.delay(0.3, function()
 						if token == sectionAnimToken then
 							UpdateSizeScroll()
 						end
