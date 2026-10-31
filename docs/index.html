@@ -368,17 +368,17 @@ print(Section:IsOpen())</code></pre>
           </tbody></table></div>
           <p>Section closing hides its children before shrinking the height; opening expands the section before showing its children again.</p>
           <h3>Real glass (experimental)</h3>
-          <p>Set <code>RealGlass = true</code> in <code>MakeGui</code>, or call <code>Window:SetRealGlass(true)</code>. A glass part locked to the window rect and a DepthOfField effect blur what is behind the panel. Lower the opacity so the blur shows through.</p>
+          <p>Set <code>RealGlass = true</code> in <code>MakeGui</code>, or call <code>Window:SetRealGlass(true)</code>. The panel's rectangle is projected onto thin, nearly invisible glass wedges in front of the camera, and a DepthOfField effect blurs only the depth near the camera. The world behind the window blurs while the rest of the scene stays sharp. The technique is adapted from MacLib's acrylic.</p>
           <pre data-lang="Luau"><code>local Window = FlurioreLib:MakeGui({
     NameHub = "My Hub",
     RealGlass = true,
-    RealGlassIntensity = 0.5, -- 0 to 1
+    RealGlassIntensity = 1, -- 0 to 1, default 1
 })
 
 Window:SetOpacity(0.5)
 Window:SetRealGlass(false)
 print(Window:GetRealGlass())</code></pre>
-          <div class="callout warning"><span class="callout-icon">!</span><p><strong>Experimental and not runtime-tested.</strong> DepthOfField is a Lighting effect, so the blur may cover the whole screen rather than only the window. It is skipped when graphics quality is below level 8. Another script using DepthOfField in Lighting will conflict with it.</p></div>
+          <div class="callout warning"><span class="callout-icon">!</span><p><strong>Experimental and not runtime-tested in this library.</strong> Objects closer than about 1.6 studs to the camera are also blurred. The effect is skipped when graphics quality is below level 8. Another script that uses its own DepthOfField in Lighting can conflict with it.</p></div>
         </section>
 
         <section class="doc-section" data-search-section>
@@ -568,7 +568,7 @@ Dropdown:Refresh({"One", "Two", "Three"}, "Two")
 -- Dropdown:Clear() removes options and selection.</code></pre>
           <p>The dropdown's <code>Value</code> is a table of selected option strings, even when <code>Multi = false</code>. <code>Options</code> holds the available strings.</p>
           <h3>Color picker</h3>
-          <p>Click the row to open a panel with a saturation/value square and a hue bar. Drag on either one. Any color can be chosen, including white, grey and black. <code>Callback</code> fires on every change while dragging.</p>
+          <p>Click the row to open a panel with a saturation/value square and a hue bar. Drag on either one. The swatch stays at the top of the row while the panel is open, and dragging inside the panel does not scroll the section. Any color can be chosen, including white, grey and black. <code>Callback</code> fires on every change while dragging.</p>
           <pre data-lang="Luau"><code>local Picker = Section:AddColorPicker({
     Title = "Accent",
     Content = "Choose an accent color.",
@@ -647,7 +647,7 @@ Window:RenameConfig("FlurioreConfigs", "main", "backup")</code></pre>
             <li>Disk config methods rely on supported filesystem functions such as <code>writefile</code>, <code>readfile</code>, and optionally <code>makefolder</code>, <code>isfolder</code>, <code>listfiles</code> or <code>delfile</code>.</li>
             <li>UI descriptions wrap to their available width; slider precision comes from <code>Increment</code>, <code>Min</code> and <code>Max</code>.</li>
             <li>Closing sections and minimizing the window hide content before resizing to reduce clipped or jumping layouts.</li>
-            <li>Real glass is experimental; its DepthOfField effect can blur the whole screen. See Window API.</li>
+            <li>Real glass is experimental. It blurs only depth near the camera, so the far world stays sharp. See Window API.</li>
             <li>Executor behavior can vary, and not every executor configuration has been runtime-tested.</li>
           </ul>
           <div class="callout warning"><span class="callout-icon">!</span><p><strong>Use responsibly.</strong> Run scripts only where allowed and review downloaded source before execution.</p></div>

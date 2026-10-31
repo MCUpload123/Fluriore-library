@@ -35,7 +35,7 @@ local Window = FlurioreLib:MakeGui({
 
   Blur = false,       -- local frost only (panel more transparent); NOT full-screen blur
   RealGlass = false,  -- experimental glass + DepthOfField behind the window (see "Real glass")
-  RealGlassIntensity = 0.5, -- 0–1, far-blur strength when RealGlass is on
+  RealGlassIntensity = 1,   -- 0–1, blur strength near the camera (default 1)
   ThemePreset = "Midnight", -- "Dark" | "Midnight" | "Rose" | "Mint"
 
   BackgroundImage = "",                 -- optional rbxassetid://...
@@ -132,13 +132,13 @@ FlurioreLib:SetBlurSize(16)  -- size for notify Lighting blur only
 
 ### Real glass (experimental)
 
-`RealGlass = true` in `MakeGui`, or `SetRealGlass(true)` at runtime, adds a glass part in front of the camera that is locked to the window rect, plus a `DepthOfFieldEffect` focused on it. The panel's frost then sits over a blurred background. Lower the opacity so the blur shows through.
+`RealGlass = true` in `MakeGui`, or `SetRealGlass(true)` at runtime, projects the panel's screen rectangle onto thin, nearly invisible glass wedges in front of the camera. A `DepthOfFieldEffect` then blurs only the depth near the camera, so the world behind the window blurs while the rest of the scene stays sharp. The technique is adapted from MacLib's acrylic.
 
 ```lua
 local Window = FlurioreLib:MakeGui({
   NameHub = "My Hub",
   RealGlass = true,
-  RealGlassIntensity = 0.5,  -- 0–1, far-blur strength
+  RealGlassIntensity = 1,    -- 0–1, blur strength near the camera (default 1)
 })
 
 Window:SetOpacity(0.5)       -- a more see-through panel shows the blur better
@@ -148,10 +148,10 @@ print(Window:GetRealGlass())
 
 Limits:
 
-- `DepthOfFieldEffect` is a Lighting effect, so the blur can cover the whole screen, not only the window. Check this in your game.
+- Objects closer than about 1.6 studs to the camera (first-person arms, for example) are also blurred, since the near-field blur covers them too.
 - It is skipped when graphics quality is below level 8. Automatic quality is allowed.
-- The glass part and effect are client-side. They hide when the window is hidden and are removed when the window is destroyed or real glass is turned off.
-- Another script that uses `DepthOfFieldEffect` in Lighting will conflict with it.
+- The wedges and effect are client-side. They hide when the window is hidden and are removed when the window is destroyed or real glass is turned off.
+- Another script that uses its own `DepthOfFieldEffect` in Lighting can conflict with it.
 - Not yet runtime-tested in Roblox Studio.
 
 ### Background image
@@ -380,7 +380,7 @@ Section:AddKeybind({
 
 ### Color picker
 
-Click the row to expand a panel: a saturation/value square on the left and a hue bar on the right. Drag on either one. The swatch on the right shows the current color. Any color can be picked, including white, grey and black.
+Click the row to expand a panel: a saturation/value square on the left and a hue bar on the right. Drag on either one. The swatch on the right shows the current color and stays at the top of the row while the panel is open. The row and its section grow to fit the panel, and dragging inside the panel does not scroll the section. Any color can be picked, including white, grey and black.
 
 ```lua
 local Picker = Section:AddColorPicker({
@@ -503,7 +503,7 @@ High priority is kept longer when the queue is full; normal toasts are removed f
 - Window frost (`SetBlur`) is panel transparency only, not a full-screen post effect.
 - Default text scale is `0.85`.
 - Default panel opacity (`Main`) is `0.3`, more see-through than older versions.
-- Real glass (`RealGlass`) is experimental; its DepthOfField can blur the whole screen. See Real glass.
+- Real glass (`RealGlass`) is experimental. It blurs only depth near the camera, so the far world stays sharp. See Real glass.
 
 
 ---

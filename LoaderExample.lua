@@ -33,7 +33,7 @@ local Window = FlurioreLib:MakeGui({
 	Size = { X = 520, Y = 360 },
 	Blur = false,
 	RealGlass = false,
-	RealGlassIntensity = 0.5,
+	RealGlassIntensity = 1,
 	ThemePreset = "Midnight",
 	MobileToggle = {
 		Size = 44,

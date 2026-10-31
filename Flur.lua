@@ -1395,14 +1395,19 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 	-- Window "blur" is local frosting only (higher panel transparency).
 	-- It does NOT enable Lighting.BlurEffect (that would blur the whole screen).
-	-- Real glass (opt-in: GuiConfig.RealGlass = true).
-	-- A glass part is kept in front of the camera at the window rect, and DepthOfField
-	-- is focused on it. GuiConfig.RealGlassIntensity (0..1) sets the far blur strength.
+	-- Real glass (opt-in: GuiConfig.RealGlass = true; GuiConfig.RealGlassIntensity 0..1, default 1).
+	-- Adapted from MacLib's acrylic technique. The panel's screen rectangle is projected onto thin,
+	-- nearly invisible glass wedges just in front of the camera. DepthOfField uses only NearIntensity,
+	-- so the blur applies to depth near the camera (the wedges) while the far world stays sharp.
+	-- Objects closer than about 1.6 studs are also blurred.
 	do
-		local REAL_GLASS_DISTANCE = 2
 		local RunService = game:GetService("RunService")
 		local GuiService = game:GetService("GuiService")
-		local realGlass = {Enabled = false, Part = nil, DoF = nil, Conn = nil}
+		local realGlass = {Enabled = false, Conn = nil, Sensor = nil, DoF = nil, Parts = {}}
+		local WEDGE_SIZE = 0.2
+		local WEDGE_DEPTH_STEP = 0.05
+		local DOF_FOCUS = 51.6
+		local DOF_IN_FOCUS = 50
 
 		local function qualityAllows()
 			local ok, level = pcall(function() return settings().Rendering.QualityLevel end)
@@ -1411,37 +1416,162 @@ function FlurioreLib:MakeGui(GuiConfig)
 			return v <= 0 or v >= 8
 		end
 
-		local function destroyParts()
-			if realGlass.Conn then realGlass.Conn:Disconnect(); realGlass.Conn = nil end
-			if realGlass.Part then realGlass.Part:Destroy(); realGlass.Part = nil end
-			if realGlass.DoF then realGlass.DoF:Destroy(); realGlass.DoF = nil end
+		local function isVisible(instance)
+			local foundScreenGui = false
+			while instance do
+				if instance:IsA("GuiObject") then
+					if not instance.Visible then return false end
+				elseif instance:IsA("ScreenGui") then
+					if not instance.Enabled then return false end
+					foundScreenGui = true
+					break
+				end
+				instance = instance.Parent
+			end
+			return foundScreenGui
 		end
 
-		local function updateRealGlass()
-			local part, dof = realGlass.Part, realGlass.DoF
-			if not part or not dof then return end
+		local function drawTriangle(v1, v2, v3, p0, p1)
+			local s1 = (v1 - v2).Magnitude
+			local s2 = (v2 - v3).Magnitude
+			local s3 = (v3 - v1).Magnitude
+			local smax = math.max(s1, s2, s3)
+			local A, B, C
+			if s1 == smax then
+				A, B, C = v1, v2, v3
+			elseif s2 == smax then
+				A, B, C = v2, v3, v1
+			else
+				A, B, C = v3, v1, v2
+			end
+
+			local para = (B - A):Dot(C - A) / (A - B).Magnitude
+			local perp = math.sqrt((C - A).Magnitude ^ 2 - para * para)
+			local difPara = (A - B).Magnitude - para
+
+			local st = CFrame.new(B, A)
+			local za = CFrame.Angles(math.pi / 2, 0, 0)
+			local cf0 = st
+			local topLook = (cf0 * za).LookVector
+			local midPoint = A + CFrame.new(A, B).LookVector * para
+			local neededLook = CFrame.new(midPoint, C).LookVector
+			local dot = math.clamp(topLook:Dot(neededLook), -1, 1)
+			local ac = CFrame.Angles(0, 0, math.acos(dot))
+
+			cf0 = cf0 * ac
+			if ((cf0 * za).LookVector - neededLook).Magnitude > 0.01 then
+				cf0 = cf0 * CFrame.Angles(0, 0, -2 * math.acos(dot))
+			end
+			cf0 = cf0 * CFrame.new(0, perp / 2, -(difPara + para / 2))
+
+			local cf1 = st * ac * CFrame.Angles(0, math.pi, 0)
+			if ((cf1 * za).LookVector - neededLook).Magnitude > 0.01 then
+				cf1 = cf1 * CFrame.Angles(0, 0, 2 * math.acos(dot))
+			end
+			cf1 = cf1 * CFrame.new(0, perp / 2, difPara / 2)
+
+			if not p0 then
+				p0 = Instance.new("Part")
+				p0.Anchored = true
+				p0.CanCollide = false
+				p0.CanQuery = false
+				p0.CanTouch = false
+				p0.CastShadow = false
+				p0.TopSurface = Enum.SurfaceType.Smooth
+				p0.BottomSurface = Enum.SurfaceType.Smooth
+				p0.Material = Enum.Material.Glass
+				p0.Size = Vector3.new(WEDGE_SIZE, WEDGE_SIZE, WEDGE_SIZE)
+				p0.Transparency = 0.98
+				p0.BrickColor = BrickColor.new("Institutional white")
+				local mesh = Instance.new("SpecialMesh")
+				mesh.MeshType = Enum.MeshType.Wedge
+				mesh.Parent = p0
+			end
+			p0:FindFirstChildWhichIsA("SpecialMesh").Scale = Vector3.new(0, perp / WEDGE_SIZE, para / WEDGE_SIZE)
+			p0.CFrame = cf0
+
+			if not p1 then
+				p1 = p0:Clone()
+			end
+			p1:FindFirstChildWhichIsA("SpecialMesh").Scale = Vector3.new(0, perp / WEDGE_SIZE, difPara / WEDGE_SIZE)
+			p1.CFrame = cf1
+
+			return p0, p1
+		end
+
+		local function drawQuad(v1, v2, v3, v4, parts)
+			parts[1], parts[2] = drawTriangle(v1, v2, v3, parts[1], parts[2])
+			parts[3], parts[4] = drawTriangle(v3, v2, v4, parts[3], parts[4])
+		end
+
+		local function updateGlass()
+			local sensor, dof = realGlass.Sensor, realGlass.DoF
 			local cam = workspace.CurrentCamera
-			local size = DropShadowHolder.AbsoluteSize
-			if not cam or not HirimiGui.Enabled or not DropShadowHolder.Visible or size.X <= 0 or size.Y <= 0 then
-				part.Transparency = 1
-				dof.Enabled = false
+			if not (realGlass.Enabled and sensor and sensor.Parent and dof and cam) or not isVisible(sensor) then
+				for _, part in ipairs(realGlass.Parts) do
+					part.Parent = nil
+				end
+				if dof then
+					dof.Enabled = false
+					dof.Parent = nil
+				end
 				return
 			end
-			local vp = cam.ViewportSize
-			if vp.X <= 0 or vp.Y <= 0 then return end
-			local topLeft = GuiService:GetGuiInset()
-			local inset = HirimiGui.IgnoreGuiInset and Vector2.new(0, 0) or Vector2.new(topLeft.X, topLeft.Y)
-			local pos = DropShadowHolder.AbsolutePosition + inset
-			local d = REAL_GLASS_DISTANCE
-			-- Camera.FieldOfView is vertical; half extents of the view plane at distance d
-			local halfH = d * math.tan(math.rad(cam.FieldOfView) / 2)
-			local halfW = halfH * vp.X / vp.Y
-			local cx = (pos.X + size.X / 2) / vp.X * 2 - 1
-			local cy = 1 - (pos.Y + size.Y / 2) / vp.Y * 2
-			part.Size = Vector3.new(size.X / vp.X * 2 * halfW, size.Y / vp.Y * 2 * halfH, 0.1)
-			part.CFrame = cam.CFrame * CFrame.new(cx * halfW, cy * halfH, -d)
-			part.Transparency = 0.85
+
+			local origin = cam:ScreenPointToRay(0, 0).Origin
+			if origin.X ~= origin.X then return end -- camera not ready yet (NaN)
+
+			if not dof.Parent then
+				dof.Parent = Lighting
+			end
 			dof.Enabled = true
+
+			-- ScreenPointToRay works in viewport space; GUI space is offset by the top bar inset
+			local inset = Vector2.new(0, 0)
+			if not HirimiGui.IgnoreGuiInset then
+				local ok, topLeft = pcall(function() return GuiService:GetGuiInset() end)
+				if ok then
+					inset = Vector2.new(topLeft.X, topLeft.Y)
+				end
+			end
+
+			local depth = math.max(1 - WEDGE_DEPTH_STEP * sensor.ZIndex, 0.2)
+			local tl = sensor.AbsolutePosition + inset
+			local br = tl + sensor.AbsoluteSize
+			local tr = Vector2.new(br.X, tl.Y)
+			local bl = Vector2.new(tl.X, br.Y)
+
+			drawQuad(
+				cam:ScreenPointToRay(tl.X, tl.Y, depth).Origin,
+				cam:ScreenPointToRay(tr.X, tr.Y, depth).Origin,
+				cam:ScreenPointToRay(bl.X, bl.Y, depth).Origin,
+				cam:ScreenPointToRay(br.X, br.Y, depth).Origin,
+				realGlass.Parts
+			)
+			for _, part in ipairs(realGlass.Parts) do
+				if part.Parent ~= cam then
+					part.Parent = cam
+				end
+			end
+		end
+
+		local function teardown()
+			if realGlass.Conn then
+				realGlass.Conn:Disconnect()
+				realGlass.Conn = nil
+			end
+			for _, part in ipairs(realGlass.Parts) do
+				part:Destroy()
+			end
+			realGlass.Parts = {}
+			if realGlass.DoF then
+				realGlass.DoF:Destroy()
+				realGlass.DoF = nil
+			end
+			if realGlass.Sensor then
+				realGlass.Sensor:Destroy()
+				realGlass.Sensor = nil
+			end
 		end
 
 		local function setRealGlass(enabled)
@@ -1449,31 +1579,30 @@ function FlurioreLib:MakeGui(GuiConfig)
 			if enabled == realGlass.Enabled then return enabled end
 			realGlass.Enabled = enabled
 			if not enabled then
-				destroyParts()
+				teardown()
 				return false
 			end
-			local part = Instance.new("Part")
-			part.Name = "FlurRealGlass"
-			part.Anchored = true
-			part.CanCollide = false
-			part.CanQuery = false
-			part.CanTouch = false
-			part.CastShadow = false
-			part.Material = Enum.Material.Glass
-			part.Color = Color3.fromRGB(230, 236, 255)
-			part.Transparency = 1
-			part.Parent = workspace
+
+			-- Transparent sensor frame that defines the rectangle to blur
+			local sensor = Instance.new("Frame")
+			sensor.Name = "FlurGlassSensor"
+			sensor.BackgroundTransparency = 1
+			sensor.BorderSizePixel = 0
+			sensor.Size = UDim2.new(1, 0, 1, 0)
+			sensor.ZIndex = Main.ZIndex
+			sensor.Parent = Main
+
 			local dof = Instance.new("DepthOfFieldEffect")
 			dof.Name = "FlurRealGlassDoF"
-			dof.FocusDistance = REAL_GLASS_DISTANCE
-			dof.InFocusRadius = 3
-			dof.NearIntensity = 0
-			dof.FarIntensity = math.clamp(tonumber(GuiConfig.RealGlassIntensity) or 0.5, 0, 1)
+			dof.FarIntensity = 0
+			dof.FocusDistance = DOF_FOCUS
+			dof.InFocusRadius = DOF_IN_FOCUS
+			dof.NearIntensity = math.clamp(tonumber(GuiConfig.RealGlassIntensity) or 1, 0, 1)
 			dof.Enabled = false
-			dof.Parent = Lighting
-			realGlass.Part = part
+
+			realGlass.Sensor = sensor
 			realGlass.DoF = dof
-			realGlass.Conn = RunService.RenderStepped:Connect(updateRealGlass)
+			realGlass.Conn = RunService.RenderStepped:Connect(updateGlass)
 			return true
 		end
 
@@ -1485,6 +1614,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 			return realGlass.Enabled
 		end
 	end
+
 
 	function GuiFunc:SetBlur(enabled)
 		enabled = not not enabled
@@ -2812,7 +2942,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 				local height = 38
 				for _, v in SectionAdd:GetChildren() do
 					if v:IsA("GuiObject") and v.Name ~= "UIListLayout" and v.Name ~= "UICorner" then
-						height = height + v.Size.Y.Offset + 3
+						height = height + (v:GetAttribute("FlurTargetH") or v.Size.Y.Offset) + 3
 					end
 				end
 				return height
@@ -4305,8 +4435,8 @@ if type(GuiConfig.MobileToggle) == "table" then
 				local Swatch = Instance.new("Frame")
 				Swatch.Name = "Swatch"
 				Swatch.BorderSizePixel = 0
-				Swatch.AnchorPoint = Vector2.new(1, 0.5)
-				Swatch.Position = UDim2.new(1, -12, 0.5, 0)
+				Swatch.AnchorPoint = Vector2.new(1, 0)
+				Swatch.Position = UDim2.new(1, -12, 0, (HEADER_H - 28) / 2)
 				Swatch.Size = UDim2.new(0, 28, 0, 28)
 				Swatch.Parent = Row
 				local SwatchCorner = Instance.new("UICorner")
@@ -4485,15 +4615,32 @@ if type(GuiConfig.MobileToggle) == "table" then
 					end
 				end
 
+				local lockedScroll = nil
+				local function lockScroll(on)
+					if on then
+						if lockedScroll then return end
+						local p = Row.Parent
+						while p and not p:IsA("ScrollingFrame") do
+							p = p.Parent
+						end
+						if p and p.ScrollingEnabled then
+							lockedScroll = p
+							p.ScrollingEnabled = false
+						end
+					elseif lockedScroll then
+						lockedScroll.ScrollingEnabled = true
+						lockedScroll = nil
+					end
+				end
 				SVHit.InputBegan:Connect(function(input)
 					if isPress(input) then
-						dragging = "sv"
+						dragging = "sv"; lockScroll(true)
 						applyInput(input)
 					end
 				end)
 				HueHit.InputBegan:Connect(function(input)
 					if isPress(input) then
-						dragging = "hue"
+						dragging = "hue"; lockScroll(true)
 						applyInput(input)
 					end
 				end)
@@ -4501,16 +4648,15 @@ if type(GuiConfig.MobileToggle) == "table" then
 					if dragging and isMove(input) then applyInput(input) end
 				end)
 				UserInputService.InputEnded:Connect(function(input)
-					if dragging and isPress(input) then dragging = nil end
+					if dragging and isPress(input) then dragging = nil; lockScroll(false) end
 				end)
 
 				local function setExpanded(v)
 					expanded = v
-					TweenService:Create(
-						Row,
-						TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-						{Size = UDim2.new(1, 0, 0, expanded and (HEADER_H + PANEL_H) or HEADER_H)}
-					):Play()
+					local target = expanded and (HEADER_H + PANEL_H) or HEADER_H
+					Row:SetAttribute("FlurTargetH", target)
+					TweenService:Create(Row, sectionTweenInfo, {Size = UDim2.new(1, 0, 0, target)}):Play()
+					UpdateSizeSection()
 				end
 				Header.Activated:Connect(function()
 					setExpanded(not expanded)
