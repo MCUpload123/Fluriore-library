@@ -34,6 +34,26 @@ local Window = FlurioreLib:MakeGui({
 	Blur = false,
 	RealGlass = false,
 	RealGlassIntensity = 1,
+
+	-- Key system: off by default. Set KeySystem = true to require a key before the window opens.
+	KeySystem = false,
+	KeySettings = {
+		Title = "Fluriore Demo",
+		Subtitle = "Enter a demo key to continue",
+		Keys = {
+			"FLUR-DEMO-0001",
+			{ Key = "TRIAL-1234", Label = "Trial", Expires = 1798761600 }, -- os.time value: 2027-01-01 UTC
+		},
+		GetKeyLinks = {
+			{ Label = "Discord", Url = "https://discord.gg/your-invite" },
+			{ Label = "Copy demo key", Action = function(ctx)
+				ctx.Copy("FLUR-DEMO-0001")
+				ctx.Status("Demo key copied")
+			end },
+		},
+		Save = true,
+		SaveFile = "FlurDemoKey.txt",
+	},
 	ThemePreset = "Midnight",
 	MobileToggle = {
 		Size = 44,
@@ -392,6 +412,33 @@ SecMisc:AddButton({
 	Content = "Same as header X",
 	Callback = function()
 		Window:DestroyGui()
+	end,
+})
+
+-- v2 extras
+Window:AddTopbarButton({
+	Name = "Demo",
+	Icon = "D",
+	Callback = function()
+		FlurioreLib:MakeNotify({ Title = "Topbar", Content = "Topbar button pressed", Delay = 2 })
+	end,
+})
+
+local InfoLabel = SecElements:AddLabel({ Title = "Label: live text", Color = Color3.fromRGB(180, 160, 255) })
+SecElements:AddDivider()
+ToggleA:OnChanged(function(value)
+	InfoLabel:Set("Mode A is " .. tostring(value))
+end)
+
+SecWindow:AddButton({
+	Title = "Copy config string",
+	Content = "ExportConfigString → clipboard",
+	Callback = function()
+		local str = Window:ExportConfigString()
+		if str and setclipboard then
+			setclipboard(str)
+			FlurioreLib:MakeNotify({ Title = "Copied", Content = "Config string on clipboard", Delay = 3 })
+		end
 	end,
 })
 

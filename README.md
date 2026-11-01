@@ -37,6 +37,8 @@ local Window = FlurioreLib:MakeGui({
   RealGlass = false,  -- experimental glass + DepthOfField behind the window (see "Real glass")
   RealGlassIntensity = 1,   -- 0–1, blur strength near the camera (default 1)
   Intro = true,             -- rise-and-fade when the window is built (false = skip)
+  KeySystem = false,        -- true = require a key before the window opens (see Key system)
+  KeySettings = {},         -- options for the key system, see below
   ThemePreset = "Midnight", -- "Dark" | "Midnight" | "Rose" | "Mint"
 
   BackgroundImage = "",                 -- optional rbxassetid://...
@@ -652,3 +654,166 @@ Section:DisableVirtual()
 Keep this **off** unless a section has a very large number of rows and scrolling feels heavy.
 When enabled, only a window of rows stays `Visible` based on scroll position (estimated from each row’s `Size.Y`, not screen AbsolutePosition).
 All rows still exist in the tree; layout height stays correct.
+
+
+---
+
+## Key system
+
+The key system lives inside `MakeGui`. It is off by default. Set `KeySystem = true` and fill `KeySettings`, and the window waits until a key is accepted before it is built.
+
+```lua
+local Window = FlurioreLib:MakeGui({
+  NameHub = "My Hub",
+  KeySystem = true,
+  KeySettings = {
+    Title = "My Hub",
+    Subtitle = "Enter your key",
+    Keys = {"KEY-ONE", {Key = "TRIAL", Label = "Trial", Expires = 1798761600}},
+    GetKeyLinks = {{Label = "Discord", Url = "https://discord.gg/..."}},
+    Save = true,
+  },
+})
+```
+
+`MakeGui` yields while the gate is up, so call it from a normal script body, not inside a callback or a Heartbeat connection.
+
+You can also call `FlurioreLib:RequireKey(settings)` on its own. It returns `true` once a key is accepted. Every option below is optional, so you can use only what you need.
+
+```lua
+local passed = FlurioreLib:RequireKey({
+  Title = "My Hub",
+  Subtitle = "Enter your key to continue",
+  VerifyLabel = "Verify",            -- button text
+  Logo = "rbxassetid://123456789",   -- or LogoFile = "logo.png" (getcustomasset)
+
+  -- Local keys (several allowed, no server needed)
+  Keys = {
+    "KEY-ONE",
+    {Key = "TRIAL-KEY", Label = "Trial", Expires = os.time() + 86400},
+  },
+  CaseSensitive = true,
+
+  -- Get key buttons: any number, each a link or your own action
+  GetKeyLinks = {
+    {Label = "Discord", Url = "https://discord.gg/..."},
+    {Label = "Copy key", Action = function(ctx)
+      ctx.Copy("KEY-ONE")
+      ctx.Status("Key copied")
+    end},
+  },
+
+  Save = true,                       -- remember an accepted key
+  SaveFile = "MyHubKey.txt",
+})
+if not passed then return end
+
+local Window = FlurioreLib:MakeGui({ NameHub = "My Hub" })
+```
+
+### Checking a key
+
+Checks run in this order. The first one that gives an answer decides.
+
+1. `Keys`: local list, no network. `Expires` is an `os.time()` value.
+2. `Verify = function(key, ctx) return ok, message end`: your own Lua check. `Validator` is the same thing under the old name.
+3. `Service`: a registered service (see below).
+4. `Api`: an HTTP check. Your server can return any shape:
+
+```lua
+Api = {
+  Url = "https://your-server/check?key={key}&uid={uid}", -- or no placeholders: key/uid are appended
+  Method = "GET",                        -- or "POST" (JSON body, needs the executor's request())
+  Headers = {["X-Token"] = "..."},
+  Extra = {hub = "main"},                -- sent with every check
+  KeyParam = "key", UidParam = "uid",
+
+  -- Optional: your own transport. Return the response body and status code.
+  -- Request = function(key, uid) return body, statusCode end,
+
+  -- Optional: your own parser. Return true/false and a message for the user.
+  -- Parse = function(body, statusCode, key) return ok, message end,
+
+  -- Used when Parse is not given: JSON paths for the answer
+  ValidPath = "data.valid",
+  MessagePath = "message",
+}
+```
+
+### Services
+
+Register a service once, then use it by name. This works like `WindUI.Services`: a service is a table with a `Verify` function, and it can also add a Get key button.
+
+```lua
+FlurioreLib.Services.myservice = {
+  Args = {"ServiceId"},                              -- names of the values you pass in ServiceArgs
+  Verify = function(key, ctx)
+    -- ctx.Args.ServiceId, ctx.Uid, ctx.Status(text), ctx.Copy(text) are available
+    return key == "abc", "Wrong key"
+  end,
+  GetKey = function(ctx)                             -- optional: custom action for the Get key button
+    ctx.Copy("https://your-site/get-key")
+  end,
+  -- Url = "https://...",                            -- or a plain link, used when GetKey is missing
+  -- GetKeyLabel = "Get key",
+}
+
+local passed = FlurioreLib:RequireKey({
+  Title = "My Hub",
+  Service = "myservice",                             -- or pass the table directly
+  ServiceArgs = {ServiceId = "abc"},
+})
+```
+
+### Get key buttons
+
+- `GetKeyLinks`: any number of buttons. Each one has either a `Url` or an `Action`.
+- A `Url` opens in a browser. If that fails, the link is copied. If copying is not available either, the link is shown in the status line.
+- An `Action` gets a `ctx` with `Key`, `Uid`, `Args`, `Status(text, color)` and `Copy(text)`.
+- `GetKeyUrl` / `GetKeyLabel` is a shorthand for a single link.
+
+The gate runs on the client. `Keys`, `Verify` and `Validator` are inside the script, so anyone who reads it can see them. For a key that must stay hidden, check it on your server with `Api` or a service.
+
+## Topbar buttons
+
+Adds a small button to the left of the header's minimize button.
+
+```lua
+local btn = Window:AddTopbarButton({
+  Name = "Theme",
+  Icon = "T",                    -- single letter, or rbxassetid://… for an image
+  Callback = function()
+    Window:SetThemePreset("Rose")
+  end,
+})
+
+btn:SetVisible(false)
+btn:SetCallback(function() print("new handler") end)
+btn:Destroy()
+```
+
+## Config as a string
+
+Copy-paste friendly base64 version of the config (same content as `ExportConfig`).
+
+```lua
+local str = Window:ExportConfigString()   -- base64 text
+local ok, err = Window:ImportConfigString(str)
+```
+
+## Label, divider and listeners
+
+```lua
+local Info = Section:AddLabel({ Title = "Status: idle", Color = Color3.fromRGB(180, 160, 255) })
+Info:Set("Status: running")
+Info:SetColor(Color3.fromRGB(120, 220, 160))
+
+Section:AddDivider()
+
+local Toggle = Section:AddToggle({ Title = "Auto farm", Flag = "auto_farm", Callback = function() end })
+Toggle:OnChanged(function(value)
+  print("auto farm is now", value)
+end)
+```
+
+`OnChanged` works on Toggle, Slider, Input, Dropdown, Keybind, ColorPicker and ColorCycle. It returns the element, so calls can be chained. Listeners run in their own task, so one failing listener cannot break the others.

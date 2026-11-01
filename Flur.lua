@@ -632,8 +632,622 @@ function FlurioreLib:MakeNotify(NotifyConfig)
 		restackNotifies()
 		return NotifyFunction
 end
+
+-- Key services registry (same idea as WindUI.Services). Register once, use by name:
+--   FlurioreLib.Services.myservice = {
+--     Args = {"ServiceId"},                              -- names you pass in ServiceArgs (informational)
+--     Verify = function(key, ctx) return ok, message end, -- required for this service
+--     GetKey = function(ctx) end,                        -- optional: action for the Get key button
+--     Url = "https://...",                               -- optional: opened by Get key when GetKey is missing
+--     GetKeyLabel = "Get key",                           -- optional
+--   }
+-- ctx = {Key, Uid, Args (ServiceArgs), Status(text, color), Copy(text)}
+FlurioreLib.Services = FlurioreLib.Services or {}
+
+-- Key gate: blocks until a key is accepted, then returns true.
+-- Every option is optional. Mix what you need:
+--   FlurioreLib:RequireKey({
+--     Title = "Hub", Subtitle = "Enter your key", VerifyLabel = "Verify", GetKeyLabel = "Get key",
+--     Logo = "rbxassetid://..."  -- or LogoFile = "logo.png" (getcustomasset)
+--     Keys = {"KEY-ONE", {Key = "TRIAL", Label = "Trial", Expires = os.time() + 86400}},
+--     CaseSensitive = true,
+--     Verify = function(key, ctx) return ok, message end,   -- your own Lua check (or Validator)
+--     Service = "myservice", ServiceArgs = {ServiceId = "abc"},
+--     Api = {                                                -- HTTP check, any response shape
+--       Url = "https://your-server/check?key={key}&uid={uid}", Method = "GET" | "POST",
+--       Headers = {}, Extra = {}, KeyParam = "key", UidParam = "uid",
+--       Request = function(key, uid) return body, statusCode end,   -- optional: own transport
+--       Parse = function(body, statusCode, key) return ok, message end, -- optional: own parser
+--       ValidPath = "data.valid", MessagePath = "message",            -- used when Parse is missing
+--     },
+--     GetKeyLinks = {                                        -- any buttons, any count
+--       {Label = "Discord", Url = "https://discord.gg/..."},
+--       {Label = "Copy key", Action = function(ctx) ctx.Copy("KEY-ONE") ctx.Status("Copied") end},
+--     },
+--     GetKeyUrl = "https://...",                             -- single-link shorthand
+--     Save = true, SaveFile = "FlurioreKey.txt",
+--   })
+-- Get key: an Action runs your function. A Url opens in a browser; if that fails, it is copied.
+-- Keys, Verify and Service run inside the script, so they can be read. Use Api or a Service
+-- when the check must happen on a server. The gate itself is client-side.
+function FlurioreLib:RequireKey(KeyConfig)
+    KeyConfig = KeyConfig or {}
+    local Players = game:GetService("Players")
+    local GuiService = game:GetService("GuiService")
+    local LocalPlayer = Players.LocalPlayer
+    local title = tostring(KeyConfig.Title or "Script")
+    local subtitle = tostring(KeyConfig.Subtitle or "Enter your key to continue")
+    local verifyLabel = tostring(KeyConfig.VerifyLabel or "Verify")
+    local accent = typeof(KeyConfig.Accent) == "Color3" and KeyConfig.Accent or Color3.fromRGB(140, 110, 255)
+    local good = Color3.fromRGB(120, 220, 160)
+    local bad = Color3.fromRGB(255, 120, 120)
+    local muted = Color3.fromRGB(140, 144, 160)
+    local saveEnabled = KeyConfig.Save ~= false
+    local saveFile = tostring(KeyConfig.SaveFile or "FlurioreKey.txt")
+    local caseSensitive = KeyConfig.CaseSensitive ~= false
+    local finished = Instance.new("BindableEvent")
+    local setStatus, copyText -- assigned in the UI section; used by actions and services
+
+    -- service: a registered name, or a table passed directly
+    local service = nil
+    if type(KeyConfig.Service) == "string" then
+        service = FlurioreLib.Services[KeyConfig.Service]
+    elseif type(KeyConfig.Service) == "table" then
+        service = KeyConfig.Service
+    end
+
+    -- local keys: plain strings or {Key = "...", Label = "...", Expires = os.time()}
+    local keyList = {}
+    for _, entry in ipairs(KeyConfig.Keys or {}) do
+        if type(entry) == "string" then
+            table.insert(keyList, {Key = entry})
+        elseif type(entry) == "table" and type(entry.Key) == "string" then
+            table.insert(keyList, {Key = entry.Key, Label = entry.Label, Expires = tonumber(entry.Expires)})
+        end
+    end
+
+    -- Get key buttons: {Label, Url} or {Label, Action}
+    local buttons = {}
+    if type(KeyConfig.GetKeyLinks) == "table" then
+        for _, item in ipairs(KeyConfig.GetKeyLinks) do
+            if type(item) == "table" then
+                local label = tostring(item.Label or "Get key")
+                if type(item.Action) == "function" then
+                    table.insert(buttons, {Label = label, Action = item.Action})
+                elseif type(item.Url) == "string" and item.Url ~= "" then
+                    table.insert(buttons, {Label = label, Url = item.Url})
+                end
+            end
+        end
+    end
+    if #buttons == 0 and type(KeyConfig.GetKeyUrl) == "string" and KeyConfig.GetKeyUrl ~= "" then
+        table.insert(buttons, {Label = tostring(KeyConfig.GetKeyLabel or "Get key"), Url = KeyConfig.GetKeyUrl})
+    end
+    if #buttons == 0 and service then
+        local label = tostring(service.GetKeyLabel or KeyConfig.GetKeyLabel or "Get key")
+        if type(service.GetKey) == "function" then
+            table.insert(buttons, {Label = label, Action = service.GetKey})
+        elseif type(service.Url) == "string" and service.Url ~= "" then
+            table.insert(buttons, {Label = label, Url = service.Url})
+        end
+    end
+
+    local function tw(obj, time, goal, style, dir)
+        return TweenService:Create(obj, TweenInfo.new(time, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), goal)
+    end
+
+    local function sameKey(a, b)
+        if caseSensitive then return a == b end
+        return string.lower(a) == string.lower(b)
+    end
+
+    local function getPath(data, path)
+        local node = data
+        for part in string.gmatch(path, "[^%.]+") do
+            if type(node) ~= "table" then return nil end
+            node = node[part]
+        end
+        return node
+    end
+
+    local function isTruthy(v)
+        return v == true or v == "true" or v == 1 or v == "1"
+    end
+
+    local function readSavedKey()
+        if not saveEnabled or type(isfile) ~= "function" or type(readfile) ~= "function" then return nil end
+        local ok, result = pcall(function()
+            if isfile(saveFile) then return readfile(saveFile) end
+        end)
+        if ok and type(result) == "string" and result ~= "" then return result end
+        return nil
+    end
+
+    -- context handed to Verify, Api hooks and button actions
+    local function makeCtx(key)
+        return {
+            Key = key,
+            Uid = LocalPlayer and LocalPlayer.UserId or 0,
+            Args = KeyConfig.ServiceArgs or {},
+            Status = function(text, color)
+                setStatus(tostring(text), color or muted)
+            end,
+            Copy = function(text)
+                return copyText(tostring(text))
+            end,
+        }
+    end
+
+    -- Api: custom transport (Request) and parser (Parse) are optional overrides
+    local function callApi(api, key, ctx)
+        local responseBody, statusCode
+        if type(api.Request) == "function" then
+            local okReq, body, code = pcall(api.Request, key, ctx.Uid)
+            if not okReq then return false, "Request error" end
+            responseBody, statusCode = body, code
+        else
+            local params = {}
+            if type(api.Extra) == "table" then
+                for k, v in pairs(api.Extra) do params[tostring(k)] = tostring(v) end
+            end
+            params[tostring(api.KeyParam or "key")] = key
+            params[tostring(api.UidParam or "uid")] = tostring(ctx.Uid)
+
+            local method = string.upper(tostring(api.Method or "GET"))
+            local url = tostring(api.Url)
+            local usedPlaceholder = false
+            url = string.gsub(url, "{key}", function()
+                usedPlaceholder = true
+                return HttpService:UrlEncode(key)
+            end)
+            url = string.gsub(url, "{uid}", function()
+                return HttpService:UrlEncode(tostring(ctx.Uid))
+            end)
+
+            local bodyText = nil
+            if method == "GET" then
+                if not usedPlaceholder then
+                    local pieces = {}
+                    for k, v in pairs(params) do
+                        table.insert(pieces, HttpService:UrlEncode(k) .. "=" .. HttpService:UrlEncode(v))
+                    end
+                    if #pieces > 0 then
+                        url = url .. (string.find(url, "?", 1, true) and "&" or "?") .. table.concat(pieces, "&")
+                    end
+                end
+            else
+                bodyText = HttpService:JSONEncode(params)
+            end
+
+            local requestFn = (type(request) == "function" and request) or (type(http_request) == "function" and http_request) or nil
+            if requestFn then
+                local headers = {}
+                if type(api.Headers) == "table" then
+                    for k, v in pairs(api.Headers) do headers[tostring(k)] = tostring(v) end
+                end
+                if bodyText and headers["Content-Type"] == nil then
+                    headers["Content-Type"] = "application/json"
+                end
+                local okReq, res = pcall(requestFn, {Url = url, Method = method, Headers = headers, Body = bodyText})
+                if not okReq or type(res) ~= "table" then return false, "Server unreachable" end
+                responseBody = res.Body
+                statusCode = res.StatusCode
+            elseif method == "GET" then
+                local okGet, body = pcall(function() return game:HttpGet(url) end)
+                if not okGet then return false, "Server unreachable" end
+                responseBody = body
+            else
+                return false, "POST needs executor request()"
+            end
+        end
+
+        if type(api.Parse) == "function" then
+            local okParse, ok, message = pcall(api.Parse, responseBody, statusCode, key)
+            if not okParse then return false, "Parse error" end
+            return isTruthy(ok), message
+        end
+
+        if type(responseBody) ~= "string" then return false, "Bad server response" end
+        local okDecode, data = pcall(function() return HttpService:JSONDecode(responseBody) end)
+        if not okDecode or type(data) ~= "table" then return false, "Bad server response" end
+        local valid = getPath(data, tostring(api.ValidPath or "valid"))
+        local message = getPath(data, tostring(api.MessagePath or "message"))
+        if isTruthy(valid) or (api.SuccessValue ~= nil and valid == api.SuccessValue) then
+            return true, message
+        end
+        if type(message) ~= "string" or message == "" then
+            if type(statusCode) == "number" and statusCode >= 400 then
+                message = "Server error " .. tostring(statusCode)
+            else
+                message = "Invalid key"
+            end
+        end
+        return false, message
+    end
+
+    local function checkKey(key)
+        for _, entry in ipairs(keyList) do
+            if sameKey(key, entry.Key) then
+                if entry.Expires and os.time() > entry.Expires then
+                    return false, "Key expired"
+                end
+                return true, entry.Label
+            end
+        end
+
+        local ctx = makeCtx(key)
+
+        local verifyFn = KeyConfig.Verify or KeyConfig.Validator
+        if type(verifyFn) == "function" then
+            local ok, valid, message = pcall(verifyFn, key, ctx)
+            if not ok then return false, "Verify error" end
+            return isTruthy(valid), message
+        end
+
+        if service and type(service.Verify) == "function" then
+            local ok, valid, message = pcall(service.Verify, key, ctx)
+            if not ok then return false, "Service error" end
+            return isTruthy(valid), message
+        end
+
+        local api = KeyConfig.Api
+        if type(api) == "string" then
+            api = {Url = api}
+        elseif type(api) ~= "table" and type(KeyConfig.Validate) == "string" then
+            api = {Url = KeyConfig.Validate}
+        end
+        if type(api) == "table" and (type(api.Url) == "string" or type(api.Request) == "function") then
+            local okCall, ok, message = pcall(callApi, api, key, ctx)
+            if not okCall then return false, "Server error" end
+            return ok, message
+        end
+
+        if #keyList > 0 then return false, "Invalid key" end
+        return false, "No key source configured"
+    end
+
+    -- UI ------------------------------------------------------------
+    local parent = nil
+    pcall(function()
+        if type(gethui) == "function" then
+            parent = gethui()
+        else
+            parent = game:GetService("CoreGui")
+        end
+    end)
+    if not parent then
+        parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "FlurKeyGate"
+    gui.IgnoreGuiInset = true
+    gui.ResetOnSpawn = false
+    gui.DisplayOrder = 1000
+    gui.Parent = parent
+
+    local dim = Instance.new("Frame")
+    dim.Name = "Dim"
+    dim.Size = UDim2.new(1, 0, 1, 0)
+    dim.BackgroundColor3 = Color3.new(0, 0, 0)
+    dim.BackgroundTransparency = 1
+    dim.BorderSizePixel = 0
+    dim.Parent = gui
+
+    local linkTop = 242
+    local statusY = (#buttons > 0) and (linkTop + #buttons * 40 + 4) or 244
+    local cardH = statusY + 16 + 18
+
+    local restPos = UDim2.new(0.5, 0, 0.5, 0)
+    local card = Instance.new("Frame")
+    card.Name = "Card"
+    card.AnchorPoint = Vector2.new(0.5, 0.5)
+    card.Position = restPos
+    card.Size = UDim2.new(0, 340, 0, cardH)
+    card.BackgroundColor3 = Color3.fromRGB(15, 16, 22)
+    card.BackgroundTransparency = 0.02
+    card.BorderSizePixel = 0
+    card.Parent = dim
+    local cardCorner = Instance.new("UICorner")
+    cardCorner.CornerRadius = UDim.new(0, 14)
+    cardCorner.Parent = card
+    local cardStroke = Instance.new("UIStroke")
+    cardStroke.Color = Color3.fromRGB(255, 255, 255)
+    cardStroke.Thickness = 1
+    cardStroke.Transparency = 0.9
+    cardStroke.Parent = card
+    local scale = Instance.new("UIScale")
+    scale.Scale = 0.92
+    scale.Parent = card
+
+    local hairline = Instance.new("Frame")
+    hairline.Name = "Hairline"
+    hairline.AnchorPoint = Vector2.new(0.5, 0)
+    hairline.Position = UDim2.new(0.5, 0, 0, 0)
+    hairline.Size = UDim2.new(0.42, 0, 0, 2)
+    hairline.BackgroundColor3 = accent
+    hairline.BackgroundTransparency = 0.25
+    hairline.BorderSizePixel = 0
+    hairline.Parent = card
+
+    local logo
+    if type(KeyConfig.Logo) == "string" and KeyConfig.Logo:find("rbxassetid", 1, true) then
+        logo = Instance.new("ImageLabel")
+        logo.Image = KeyConfig.Logo
+        logo.BackgroundTransparency = 1
+    elseif type(KeyConfig.LogoFile) == "string" and type(getcustomasset) == "function" then
+        local okAsset, asset = pcall(getcustomasset, KeyConfig.LogoFile)
+        if okAsset and asset then
+            logo = Instance.new("ImageLabel")
+            logo.Image = asset
+            logo.BackgroundTransparency = 1
+        end
+    end
+    if not logo then
+        logo = Instance.new("TextLabel")
+        logo.Text = string.upper(string.sub(title, 1, 1))
+        logo.Font = Enum.Font.GothamBold
+        logo.TextSize = 20
+        logo.TextColor3 = Color3.fromRGB(245, 245, 250)
+        logo.BackgroundColor3 = accent
+        logo.BackgroundTransparency = 0.1
+        local logoCorner = Instance.new("UICorner")
+        logoCorner.CornerRadius = UDim.new(0, 12)
+        logoCorner.Parent = logo
+    end
+    logo.Name = "Logo"
+    logo.AnchorPoint = Vector2.new(0.5, 0)
+    logo.Position = UDim2.new(0.5, 0, 0, 28)
+    logo.Size = UDim2.new(0, 44, 0, 44)
+    logo.BorderSizePixel = 0
+    logo.Parent = card
+
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.Name = "Title"
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Font = Enum.Font.GothamBold
+    titleLabel.TextSize = 17
+    titleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+    titleLabel.Text = title
+    titleLabel.Position = UDim2.new(0, 20, 0, 84)
+    titleLabel.Size = UDim2.new(1, -40, 0, 22)
+    titleLabel.Parent = card
+
+    local subLabel = Instance.new("TextLabel")
+    subLabel.Name = "Subtitle"
+    subLabel.BackgroundTransparency = 1
+    subLabel.Font = Enum.Font.Gotham
+    subLabel.TextSize = 12
+    subLabel.TextColor3 = muted
+    subLabel.Text = subtitle
+    subLabel.Position = UDim2.new(0, 20, 0, 108)
+    subLabel.Size = UDim2.new(1, -40, 0, 16)
+    subLabel.Parent = card
+
+    local inputFrame = Instance.new("Frame")
+    inputFrame.Name = "Input"
+    inputFrame.Position = UDim2.new(0, 20, 0, 140)
+    inputFrame.Size = UDim2.new(1, -40, 0, 40)
+    inputFrame.BackgroundColor3 = Color3.fromRGB(24, 25, 34)
+    inputFrame.BorderSizePixel = 0
+    inputFrame.Parent = card
+    local inputCorner = Instance.new("UICorner")
+    inputCorner.CornerRadius = UDim.new(0, 9)
+    inputCorner.Parent = inputFrame
+    local inputStroke = Instance.new("UIStroke")
+    inputStroke.Color = Color3.fromRGB(255, 255, 255)
+    inputStroke.Thickness = 1
+    inputStroke.Transparency = 0.88
+    inputStroke.Parent = inputFrame
+
+    local box = Instance.new("TextBox")
+    box.Name = "KeyBox"
+    box.BackgroundTransparency = 1
+    box.Position = UDim2.new(0, 12, 0, 0)
+    box.Size = UDim2.new(1, -24, 1, 0)
+    box.Font = Enum.Font.Gotham
+    box.TextSize = 13
+    box.TextColor3 = Color3.fromRGB(235, 235, 240)
+    box.PlaceholderText = tostring(KeyConfig.Placeholder or "Paste your key")
+    box.PlaceholderColor3 = Color3.fromRGB(95, 99, 115)
+    box.Text = ""
+    box.ClearTextOnFocus = false
+    box.TextXAlignment = Enum.TextXAlignment.Left
+    box.Parent = inputFrame
+
+    local verify = Instance.new("TextButton")
+    verify.Name = "Verify"
+    verify.Text = verifyLabel
+    verify.Font = Enum.Font.GothamBold
+    verify.TextSize = 13
+    verify.TextColor3 = Color3.fromRGB(12, 10, 20)
+    verify.AutoButtonColor = false
+    verify.BackgroundColor3 = accent
+    verify.BackgroundTransparency = 0.04
+    verify.BorderSizePixel = 0
+    verify.Position = UDim2.new(0, 20, 0, 192)
+    verify.Size = UDim2.new(1, -40, 0, 40)
+    verify.Parent = card
+    local verifyCorner = Instance.new("UICorner")
+    verifyCorner.CornerRadius = UDim.new(0, 9)
+    verifyCorner.Parent = verify
+
+    local status = Instance.new("TextLabel")
+    status.Name = "Status"
+    status.BackgroundTransparency = 1
+    status.Font = Enum.Font.Gotham
+    status.TextSize = 12
+    status.TextColor3 = muted
+    status.TextWrapped = true
+    status.Text = ""
+    status.Position = UDim2.new(0, 20, 0, statusY)
+    status.Size = UDim2.new(1, -40, 0, 16)
+    status.Parent = card
+
+    setStatus = function(text, color)
+        status.Text = text
+        tw(status, 0.2, {TextColor3 = color or muted}, Enum.EasingStyle.Quad):Play()
+    end
+
+    copyText = function(text)
+        if type(setclipboard) == "function" then
+            local okCopy = pcall(setclipboard, text)
+            return okCopy
+        end
+        return false
+    end
+
+    local function openLink(url, label)
+        local okOpen = pcall(function() GuiService:OpenBrowserWindow(url) end)
+        if okOpen then
+            setStatus("Opened " .. label, muted)
+        elseif copyText(url) then
+            setStatus("Couldn't open it. Link copied", muted)
+        else
+            setStatus(url, muted)
+        end
+    end
+
+    local function runButton(b)
+        if b.Action then
+            local okAct, err = pcall(b.Action, makeCtx(nil))
+            if not okAct then
+                setStatus("Action failed", bad)
+                warn("[RequireKey] action error: " .. tostring(err))
+            end
+        else
+            openLink(b.Url, b.Label)
+        end
+    end
+
+    for i, b in ipairs(buttons) do
+        local btn = Instance.new("TextButton")
+        btn.Name = "GetKey" .. i
+        btn.Text = b.Label
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 12
+        btn.TextColor3 = Color3.fromRGB(190, 192, 205)
+        btn.AutoButtonColor = false
+        btn.BackgroundColor3 = Color3.fromRGB(24, 25, 34)
+        btn.BackgroundTransparency = 0
+        btn.BorderSizePixel = 0
+        btn.Position = UDim2.new(0, 20, 0, linkTop + (i - 1) * 40)
+        btn.Size = UDim2.new(1, -40, 0, 34)
+        btn.Parent = card
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 9)
+        btnCorner.Parent = btn
+        btn.MouseEnter:Connect(function() tw(btn, 0.18, {TextColor3 = Color3.fromRGB(240, 240, 245)}, Enum.EasingStyle.Quad):Play() end)
+        btn.MouseLeave:Connect(function() tw(btn, 0.18, {TextColor3 = Color3.fromRGB(190, 192, 205)}, Enum.EasingStyle.Quad):Play() end)
+        btn.Activated:Connect(function() runButton(b) end)
+    end
+
+    local function shake()
+        local offsets = {-10, 9, -7, 5, -2, 0}
+        local function step(i)
+            if i > #offsets then
+                card.Position = restPos
+                return
+            end
+            local t = tw(card, 0.05, {Position = restPos + UDim2.new(0, offsets[i], 0, 0)}, Enum.EasingStyle.Quad)
+            t:Play()
+            t.Completed:Connect(function() step(i + 1) end)
+        end
+        step(1)
+    end
+
+    local function fadeTree(root, info)
+        for _, d in ipairs(root:GetDescendants()) do
+            if d:IsA("GuiObject") then
+                local goal = {BackgroundTransparency = 1}
+                if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then goal.TextTransparency = 1 end
+                if d:IsA("ImageLabel") or d:IsA("ImageButton") then goal.ImageTransparency = 1 end
+                TweenService:Create(d, info, goal):Play()
+            elseif d:IsA("UIStroke") then
+                TweenService:Create(d, info, {Transparency = 1}):Play()
+            end
+        end
+        TweenService:Create(root, info, {BackgroundTransparency = 1}):Play()
+    end
+
+    local function success(label)
+        setStatus(type(label) == "string" and label ~= "" and ("Access granted: " .. label) or "Access granted", good)
+        tw(cardStroke, 0.3, {Color = good, Transparency = 0.6}):Play()
+        task.delay(0.55, function()
+            local out = TweenInfo.new(0.36, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+            TweenService:Create(dim, out, {BackgroundTransparency = 1}):Play()
+            TweenService:Create(scale, out, {Scale = 0.94}):Play()
+            fadeTree(card, out)
+            task.delay(0.4, function()
+                gui:Destroy()
+                finished:Fire(true)
+            end)
+        end)
+    end
+
+    local busy = false
+    local function attempt(rawKey)
+        if busy then return end
+        local key = tostring(rawKey or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if #key < 1 then
+            setStatus("Enter a key first", bad)
+            shake()
+            return
+        end
+        busy = true
+        setStatus("Checking...", muted)
+        task.spawn(function()
+            local ok, message = checkKey(key)
+            busy = false
+            if ok then
+                if saveEnabled and type(writefile) == "function" then
+                    pcall(writefile, saveFile, key)
+                end
+                success(message)
+            else
+                setStatus(type(message) == "string" and message ~= "" and message or "Invalid key", bad)
+                shake()
+            end
+        end)
+    end
+
+    verify.Activated:Connect(function() attempt(box.Text) end)
+    box.FocusLost:Connect(function(enterPressed)
+        tw(inputStroke, 0.2, {Color = Color3.fromRGB(255, 255, 255), Transparency = 0.88}, Enum.EasingStyle.Quad):Play()
+        if enterPressed then attempt(box.Text) end
+    end)
+    box.Focused:Connect(function()
+        tw(inputStroke, 0.2, {Color = accent, Transparency = 0.35}, Enum.EasingStyle.Quad):Play()
+    end)
+    verify.MouseEnter:Connect(function() tw(verify, 0.18, {BackgroundTransparency = 0}, Enum.EasingStyle.Quad):Play() end)
+    verify.MouseLeave:Connect(function() tw(verify, 0.18, {BackgroundTransparency = 0.04}, Enum.EasingStyle.Quad):Play() end)
+
+    -- intro
+    tw(dim, 0.35, {BackgroundTransparency = 0.45}, Enum.EasingStyle.Quad):Play()
+    tw(scale, 0.45, {Scale = 1}):Play()
+
+    -- remembered key: check it quietly once the card is in
+    local saved = readSavedKey()
+    if saved then
+        box.Text = saved
+        setStatus("Checking saved key...", muted)
+        task.delay(0.6, function() attempt(saved) end)
+    end
+
+    finished.Event:Wait()
+    finished:Destroy()
+    return true
+end
+
 function FlurioreLib:MakeGui(GuiConfig)
 	local GuiConfig = GuiConfig or {}
+	-- Key system (off by default). KeySystem = true + KeySettings = {...} blocks here until a key is accepted.
+	if GuiConfig.KeySystem then
+		local keySettings = type(GuiConfig.KeySettings) == "table" and GuiConfig.KeySettings or {}
+		if not FlurioreLib:RequireKey(keySettings) then
+			return nil
+		end
+	end
 	GuiConfig.NameHub = GuiConfig.NameHub or "Hirimi Hub"
 	GuiConfig.Description = GuiConfig.Description or "Comeback | developing by Hirimi, Teru"
 	GuiConfig.Color = GuiConfig.Color or Color3.fromRGB(255, 0, 255)
@@ -1079,7 +1693,10 @@ function FlurioreLib:MakeGui(GuiConfig)
 	LayersPageLayout.TweenTime = 0.42
 	LayersPageLayout.EasingDirection = Enum.EasingDirection.Out
 	LayersPageLayout.EasingStyle = Enum.EasingStyle.Quint
-	LayersPageLayout.TouchInputAllowed = false
+	-- stop UIPageLayout's own touch paging; the tab swipe handler below does it instead
+	pcall(function()
+		LayersPageLayout.TouchInputEnabled = false
+	end)
 	--// Layer Tabs
 	local ScrollTab = Instance.new("ScrollingFrame");
 	local UIListLayout = Instance.new("UIListLayout");
@@ -2037,6 +2654,70 @@ function FlurioreLib:MakeGui(GuiConfig)
 		return encoded
 	end
 
+
+	-- Base64 wrappers so a whole config fits in one copy-paste string.
+	do
+		local B64CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+		local function base64Encode(data)
+			local out = {}
+			for i = 1, #data, 3 do
+				local a, b, c = string.byte(data, i, i + 2)
+				local n = a * 65536 + (b or 0) * 256 + (c or 0)
+				local c1 = math.floor(n / 262144) % 64
+				local c2 = math.floor(n / 4096) % 64
+				local c3 = math.floor(n / 64) % 64
+				local c4 = n % 64
+				out[#out + 1] = string.sub(B64CHARS, c1 + 1, c1 + 1)
+					.. string.sub(B64CHARS, c2 + 1, c2 + 1)
+					.. (b and string.sub(B64CHARS, c3 + 1, c3 + 1) or "=")
+					.. (c and string.sub(B64CHARS, c4 + 1, c4 + 1) or "=")
+			end
+			return table.concat(out)
+		end
+
+		local function base64Decode(data)
+			data = string.gsub(data, "[^%w%+/=]", "")
+			local out = {}
+			local n, count = 0, 0
+			for i = 1, #data do
+				local ch = string.sub(data, i, i)
+				if ch == "=" then break end
+				local v = string.find(B64CHARS, ch, 1, true)
+				if v then
+					n = n * 64 + (v - 1)
+					count = count + 1
+					if count == 4 then
+						out[#out + 1] = string.char(math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256)
+						n, count = 0, 0
+					end
+				end
+			end
+			if count == 2 then
+				out[#out + 1] = string.char(math.floor(n / 16) % 256)
+			elseif count == 3 then
+				out[#out + 1] = string.char(math.floor(n / 1024) % 256, math.floor(n / 4) % 256)
+			end
+			return table.concat(out)
+		end
+
+		function GuiFunc:ExportConfigString()
+			local json = GuiFunc:ExportConfig()
+			if type(json) ~= "string" then
+				return nil, "export failed"
+			end
+			return base64Encode(json)
+		end
+
+		function GuiFunc:ImportConfigString(str)
+			if type(str) ~= "string" or str == "" then
+				return false, "string required"
+			end
+			return GuiFunc:ImportConfig(base64Decode(str))
+		end
+	end
+
+
 	function GuiFunc:ImportConfig(json)
 		if type(json) ~= "string" then return false, "json must be string" end
 		local ok, data = pcall(function()
@@ -2294,6 +2975,84 @@ function FlurioreLib:MakeGui(GuiConfig)
 	        GuiFunc:DestroyGui()
 	    end)
 	end)
+
+	-- Topbar buttons: placed left of the Min button, right-to-left in creation order.
+	do
+		local topbarSlots = 0
+		function GuiFunc:AddTopbarButton(cfg)
+			cfg = cfg or {}
+			topbarSlots = topbarSlots + 1
+			local slot = topbarSlots
+			local btn = Instance.new("TextButton")
+			btn.Name = "TopbarButton"
+			btn.Text = ""
+			btn.AutoButtonColor = false
+			btn.AnchorPoint = Vector2.new(1, 0.5)
+			btn.Position = UDim2.new(1, -(109 + 31 * (slot - 1)), 0.5, 0)
+			btn.Size = UDim2.new(0, 25, 0, 25)
+			btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			btn.BackgroundTransparency = 0.9990000128746033
+			btn.BorderSizePixel = 0
+			btn.ZIndex = 6
+			btn.Parent = Top
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = btn
+
+			local icon = cfg.Icon or ""
+			local glyph
+			if type(icon) == "string" and icon:find("rbxassetid", 1, true) then
+				glyph = Instance.new("ImageLabel")
+				glyph.Image = icon
+				glyph.ImageColor3 = Color3.fromRGB(230, 230, 235)
+				glyph.Size = UDim2.new(0, 14, 0, 14)
+			else
+				glyph = Instance.new("TextLabel")
+				local letter = (type(icon) == "string" and icon ~= "") and icon or string.sub(tostring(cfg.Name or "?"), 1, 1)
+				glyph.Text = letter
+				glyph.Font = Enum.Font.GothamBold
+				glyph.TextSize = 12
+				glyph.TextColor3 = Color3.fromRGB(230, 230, 235)
+				glyph.Size = UDim2.new(1, 0, 1, 0)
+			end
+			glyph.BackgroundTransparency = 1
+			glyph.BorderSizePixel = 0
+			glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			glyph.Position = UDim2.new(0.5, 0, 0.5, 0)
+			glyph.ZIndex = 7
+			glyph.Parent = btn
+
+			local hoverInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			btn.MouseEnter:Connect(function()
+				TweenService:Create(btn, hoverInfo, {BackgroundTransparency = 0.9}):Play()
+			end)
+			btn.MouseLeave:Connect(function()
+				TweenService:Create(btn, hoverInfo, {BackgroundTransparency = 0.9990000128746033}):Play()
+			end)
+			btn.Activated:Connect(function()
+				CircleClick(btn, Mouse.X, Mouse.Y)
+				if type(cfg.Callback) == "function" then
+					cfg.Callback()
+				end
+			end)
+
+			local api = {}
+			function api:SetVisible(visible)
+				btn.Visible = not not visible
+				return true
+			end
+			function api:SetCallback(fn)
+				cfg.Callback = fn
+				return true
+			end
+			function api:Destroy()
+				btn:Destroy()
+			end
+			return api
+		end
+	end
+
+
 	local mobileToggleBtn = nil
 	local mobileToggleIcon = nil
 	local mobileToggleCorner = nil
@@ -4905,6 +5664,95 @@ if type(GuiConfig.MobileToggle) == "table" then
 				CountItem = CountItem + 1
 				return attachElementControls(ColorFunc, Row)
 			end
+
+			function Items:AddLabel(LabelConfig)
+				LabelConfig = LabelConfig or {}
+				LabelConfig.Title = LabelConfig.Title or "Label"
+				local LabelFunc = {}
+
+				local Row = Instance.new("Frame")
+				Row.Name = "Label"
+				Row.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				Row.BackgroundTransparency = 0.935
+				Row.BorderSizePixel = 0
+				Row.LayoutOrder = CountItem
+				Row.Size = UDim2.new(1, 0, 0, 28)
+				Row.Parent = SectionAdd
+				local Corner = Instance.new("UICorner")
+				Corner.CornerRadius = UDim.new(0, 4)
+				Corner.Parent = Row
+
+				local Text = Instance.new("TextLabel")
+				Text.Name = "LabelText"
+				Text.BackgroundTransparency = 1
+				Text.Font = Enum.Font.GothamBold
+				Text.TextSize = 12
+				Text.TextXAlignment = Enum.TextXAlignment.Left
+				Text.TextColor3 = typeof(LabelConfig.Color) == "Color3" and LabelConfig.Color or Color3.fromRGB(200, 200, 210)
+				Text.Text = tostring(LabelConfig.Title)
+				Text.Position = UDim2.new(0, 10, 0, 0)
+				Text.Size = UDim2.new(1, -20, 1, 0)
+				Text.Parent = Row
+
+				function LabelFunc:Set(value)
+					Text.Text = tostring(value)
+					return true
+				end
+				function LabelFunc:SetColor(color)
+					if typeof(color) == "Color3" then Text.TextColor3 = color end
+					return true
+				end
+
+				CountItem = CountItem + 1
+				return attachElementControls(LabelFunc, Row)
+			end
+
+			function Items:AddDivider()
+				local Row = Instance.new("Frame")
+				Row.Name = "Divider"
+				Row.AnchorPoint = Vector2.new(0.5, 0)
+				Row.Position = UDim2.new(0.5, 0, 0, 0)
+				Row.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				Row.BackgroundTransparency = 0.88
+				Row.BorderSizePixel = 0
+				Row.LayoutOrder = CountItem
+				Row.Size = UDim2.new(1, -20, 0, 1)
+				Row.Parent = SectionAdd
+				CountItem = CountItem + 1
+				return attachElementControls({}, Row)
+			end
+
+			-- element:OnChanged(fn) listens for every value change of that element (chainable)
+			do
+				local listenerTargets = {"AddToggle", "AddSlider", "AddInput", "AddDropdown", "AddKeybind", "AddColorPicker", "AddColorCycle"}
+				for _, name in ipairs(listenerTargets) do
+					local original = Items[name]
+					if original then
+						Items[name] = function(self, cfg)
+							cfg = cfg or {}
+							local listeners = {}
+							local userCallback = cfg.Callback
+							cfg.Callback = function(...)
+								if type(userCallback) == "function" then userCallback(...) end
+								for _, fn in ipairs(listeners) do
+									task.spawn(fn, ...)
+								end
+							end
+							local api = original(self, cfg)
+							if type(api) == "table" then
+								function api:OnChanged(fn)
+									if type(fn) == "function" then
+										table.insert(listeners, fn)
+									end
+									return api
+								end
+							end
+							return api
+						end
+					end
+				end
+			end
+
 			return Items
 		end
 		function Sections:SetBadge(text)

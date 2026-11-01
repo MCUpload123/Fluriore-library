@@ -242,6 +242,7 @@
         <div class="nav-label">Components</div>
         <a class="nav-link" href="#elements" data-nav="elements"><span class="nav-icon">⊞</span>UI elements</a>
         <a class="nav-link" href="#notifications" data-nav="notifications"><span class="nav-icon">◉</span>Notifications</a>
+        <a class="nav-link" href="#extras" data-nav="extras"><span class="nav-icon">✦</span>Key gate &amp; extras</a>
       </div>
       <div class="nav-group">
         <div class="nav-label">Reference</div>
@@ -638,6 +639,79 @@ print(Section:IsOpen())</code></pre>
           <pre data-lang="Luau"><code>local names = Window:ListConfigs("FlurioreConfigs") -- needs listfiles
 Window:DeleteConfig("FlurioreConfigs", "main")     -- needs delfile
 Window:RenameConfig("FlurioreConfigs", "main", "backup")</code></pre>
+        </section>
+
+        <section class="doc-section" data-search-section>
+          <h2 class="section-heading" id="extras">Key gate &amp; extras</h2>
+          <p class="section-desc">Key gate, topbar buttons, config strings, labels and change listeners.</p>
+
+          <h3>Key gate</h3>
+          <p>The key system lives inside <code>MakeGui</code> and is off by default. Set <code>KeySystem = true</code> and fill <code>KeySettings</code>, and the window waits until a key is accepted before it is built. <code>MakeGui</code> yields while the gate is up, so call it from a normal script body, not inside a callback.</p>
+          <pre data-lang="Luau"><code>local Window = FlurioreLib:MakeGui({
+    NameHub = "My Hub",
+    KeySystem = true,
+    KeySettings = {
+        Title = "My Hub",
+        Keys = {"KEY-ONE", {Key = "TRIAL", Label = "Trial", Expires = 1798761600}},
+        GetKeyLinks = {{Label = "Discord", Url = "https://discord.gg/..."}},
+        Save = true,
+    },
+})</code></pre>
+          <p>You can also call <code>FlurioreLib:RequireKey(settings)</code> on its own. It returns <code>true</code> once a key is accepted. Every option below is optional.</p>
+          <pre data-lang="Luau"><code>local passed = FlurioreLib:RequireKey({
+    Title = "My Hub",
+    Keys = {"KEY-ONE", {Key = "TRIAL", Label = "Trial", Expires = os.time() + 86400}},
+    Verify = function(key, ctx) return key == "KEY-TWO", "Wrong key" end,
+    GetKeyLinks = {
+        {Label = "Discord", Url = "https://discord.gg/..."},
+        {Label = "Copy key", Action = function(ctx) ctx.Copy("KEY-ONE") ctx.Status("Copied") end},
+    },
+    Save = true,
+})
+if not passed then return end</code></pre>
+          <h4>Custom API</h4>
+          <pre data-lang="Luau"><code>Api = {
+    Url = "https://your-server/check?key={key}&amp;uid={uid}",
+    Request = function(key, uid) return body, statusCode end, -- optional transport
+    Parse = function(body, statusCode, key) return ok, message end, -- optional parser
+    ValidPath = "data.valid",
+    MessagePath = "message",
+}</code></pre>
+          <h4>Services</h4>
+          <pre data-lang="Luau"><code>FlurioreLib.Services.myservice = {
+    Verify = function(key, ctx) return key == "abc", "Wrong key" end,
+    GetKey = function(ctx) ctx.Copy("https://your-site/get-key") end,
+}
+
+FlurioreLib:RequireKey({Title = "My Hub", Service = "myservice", ServiceArgs = {ServiceId = "abc"}})</code></pre>
+          <p>A <code>Url</code> button opens in a browser. If that fails, the link is copied. <code>Keys</code>, <code>Verify</code> and <code>Validator</code> run inside the script, so they can be read. The gate is client-side, so keep anything that must stay hidden behind <code>Api</code> or a service.</p>
+          <div class="callout warning"><span class="callout-icon">!</span><p><strong>Client-side checks can be bypassed.</strong> Use <code>Api</code> or a service for anything that must be protected.</p></div>
+
+          <h3>Topbar buttons</h3>
+          <pre data-lang="Luau"><code>local btn = Window:AddTopbarButton({
+    Name = "Theme",
+    Icon = "T", -- letter, or rbxassetid://... image
+    Callback = function() Window:SetThemePreset("Rose") end,
+})
+btn:SetVisible(false)
+btn:SetCallback(function() print("new handler") end)
+btn:Destroy()</code></pre>
+
+          <h3>Config as a string</h3>
+          <pre data-lang="Luau"><code>local str = Window:ExportConfigString() -- base64 text
+local ok, err = Window:ImportConfigString(str)</code></pre>
+
+          <h3>Label, divider and listeners</h3>
+          <pre data-lang="Luau"><code>local Info = Section:AddLabel({ Title = "Status: idle", Color = Color3.fromRGB(180, 160, 255) })
+Info:Set("Status: running")
+
+Section:AddDivider()
+
+local Toggle = Section:AddToggle({ Title = "Auto farm", Flag = "auto_farm", Callback = function() end })
+Toggle:OnChanged(function(value)
+    print("auto farm is now", value)
+end)</code></pre>
+          <p class="subtle"><code>OnChanged</code> works on Toggle, Slider, Input, Dropdown, Keybind, ColorPicker and ColorCycle, and it can be chained.</p>
         </section>
 
         <section class="doc-section" data-search-section>
