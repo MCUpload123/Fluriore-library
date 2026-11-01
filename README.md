@@ -678,6 +678,8 @@ local Window = FlurioreLib:MakeGui({
 
 `MakeGui` yields while the gate is up, so call it from a normal script body, not inside a callback or a Heartbeat connection.
 
+The key window takes its colors from the same theme as the main menu (`ThemePreset` or `Theme`), so it uses the same surface, border, radius, fonts and accent. Use `KeySettings.Theme` to give it a different theme.
+
 You can also call `FlurioreLib:RequireKey(settings)` on its own. It returns `true` once a key is accepted. Every option below is optional, so you can use only what you need.
 
 ```lua

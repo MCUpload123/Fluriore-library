@@ -657,7 +657,7 @@ Window:RenameConfig("FlurioreConfigs", "main", "backup")</code></pre>
         Save = true,
     },
 })</code></pre>
-          <p>You can also call <code>FlurioreLib:RequireKey(settings)</code> on its own. It returns <code>true</code> once a key is accepted. Every option below is optional.</p>
+          <p>The key window uses the main menu's theme (<code>ThemePreset</code> or <code>Theme</code>), so the two look like one UI. You can also call <code>FlurioreLib:RequireKey(settings)</code> on its own. It returns <code>true</code> once a key is accepted. Every option below is optional.</p>
           <pre data-lang="Luau"><code>local passed = FlurioreLib:RequireKey({
     Title = "My Hub",
     Keys = {"KEY-ONE", {Key = "TRIAL", Label = "Trial", Expires = os.time() + 86400}},

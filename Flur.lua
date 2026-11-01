@@ -678,10 +678,14 @@ function FlurioreLib:RequireKey(KeyConfig)
     local title = tostring(KeyConfig.Title or "Script")
     local subtitle = tostring(KeyConfig.Subtitle or "Enter your key to continue")
     local verifyLabel = tostring(KeyConfig.VerifyLabel or "Verify")
-    local accent = typeof(KeyConfig.Accent) == "Color3" and KeyConfig.Accent or Color3.fromRGB(140, 110, 255)
-    local good = Color3.fromRGB(120, 220, 160)
-    local bad = Color3.fromRGB(255, 120, 120)
-    local muted = Color3.fromRGB(140, 144, 160)
+    local theme = type(KeyConfig.Theme) == "table" and KeyConfig.Theme or {}
+    local accent = theme.Accent or (typeof(KeyConfig.Accent) == "Color3" and KeyConfig.Accent) or Color3.fromRGB(255, 0, 255)
+    local textColor = theme.Text or Color3.fromRGB(235, 235, 235)
+    local bgColor = theme.Background or Color3.fromRGB(15, 15, 15)
+    local borderColor = theme.Border or Color3.fromRGB(50, 50, 50)
+    local good = accent
+    local bad = Color3.fromRGB(255, 110, 110)
+    local muted = theme.MutedText or Color3.fromRGB(160, 160, 160)
     local saveEnabled = KeyConfig.Save ~= false
     local saveFile = tostring(KeyConfig.SaveFile or "FlurioreKey.txt")
     local caseSensitive = KeyConfig.CaseSensitive ~= false
@@ -906,7 +910,13 @@ function FlurioreLib:RequireKey(KeyConfig)
         return false, "No key source configured"
     end
 
-    -- UI ------------------------------------------------------------
+    -- UI: same surface, border, radius, fonts and accent as the main menu ------
+    local CARD_W = 320
+    local statusY = 150
+    local linkTop = 176
+    local cardH = (#buttons > 0) and (linkTop + #buttons * 24 + 8) or (statusY + 14 + 14)
+    local restPos = UDim2.new(0.5, 0, 0.5, 0)
+
     local parent = nil
     pcall(function()
         if type(gethui) == "function" then
@@ -926,92 +936,68 @@ function FlurioreLib:RequireKey(KeyConfig)
     gui.DisplayOrder = 1000
     gui.Parent = parent
 
-    local dim = Instance.new("Frame")
-    dim.Name = "Dim"
-    dim.Size = UDim2.new(1, 0, 1, 0)
-    dim.BackgroundColor3 = Color3.new(0, 0, 0)
-    dim.BackgroundTransparency = 1
-    dim.BorderSizePixel = 0
-    dim.Parent = gui
-
-    local linkTop = 242
-    local statusY = (#buttons > 0) and (linkTop + #buttons * 40 + 4) or 244
-    local cardH = statusY + 16 + 18
-
-    local restPos = UDim2.new(0.5, 0, 0.5, 0)
     local card = Instance.new("Frame")
     card.Name = "Card"
     card.AnchorPoint = Vector2.new(0.5, 0.5)
     card.Position = restPos
-    card.Size = UDim2.new(0, 340, 0, cardH)
-    card.BackgroundColor3 = Color3.fromRGB(15, 16, 22)
-    card.BackgroundTransparency = 0.02
+    card.Size = UDim2.new(0, CARD_W, 0, cardH)
+    card.BackgroundColor3 = bgColor
+    card.BackgroundTransparency = 1
     card.BorderSizePixel = 0
-    card.Parent = dim
+    card.ClipsDescendants = true
+    card.Parent = gui
     local cardCorner = Instance.new("UICorner")
-    cardCorner.CornerRadius = UDim.new(0, 14)
+    cardCorner.CornerRadius = UDim.new(0, 8)
     cardCorner.Parent = card
     local cardStroke = Instance.new("UIStroke")
-    cardStroke.Color = Color3.fromRGB(255, 255, 255)
+    cardStroke.Color = borderColor
     cardStroke.Thickness = 1
-    cardStroke.Transparency = 0.9
+    cardStroke.Transparency = 0.5
     cardStroke.Parent = card
-    local scale = Instance.new("UIScale")
-    scale.Scale = 0.92
-    scale.Parent = card
 
-    local hairline = Instance.new("Frame")
-    hairline.Name = "Hairline"
-    hairline.AnchorPoint = Vector2.new(0.5, 0)
-    hairline.Position = UDim2.new(0.5, 0, 0, 0)
-    hairline.Size = UDim2.new(0.42, 0, 0, 2)
-    hairline.BackgroundColor3 = accent
-    hairline.BackgroundTransparency = 0.25
-    hairline.BorderSizePixel = 0
-    hairline.Parent = card
-
-    local logo
+    -- top bar: logo (optional) and title, separated by a hairline like the main menu
+    local hasLogo = false
+    local topLogo = nil
     if type(KeyConfig.Logo) == "string" and KeyConfig.Logo:find("rbxassetid", 1, true) then
-        logo = Instance.new("ImageLabel")
-        logo.Image = KeyConfig.Logo
-        logo.BackgroundTransparency = 1
+        topLogo = Instance.new("ImageLabel")
+        topLogo.Image = KeyConfig.Logo
     elseif type(KeyConfig.LogoFile) == "string" and type(getcustomasset) == "function" then
         local okAsset, asset = pcall(getcustomasset, KeyConfig.LogoFile)
         if okAsset and asset then
-            logo = Instance.new("ImageLabel")
-            logo.Image = asset
-            logo.BackgroundTransparency = 1
+            topLogo = Instance.new("ImageLabel")
+            topLogo.Image = asset
         end
     end
-    if not logo then
-        logo = Instance.new("TextLabel")
-        logo.Text = string.upper(string.sub(title, 1, 1))
-        logo.Font = Enum.Font.GothamBold
-        logo.TextSize = 20
-        logo.TextColor3 = Color3.fromRGB(245, 245, 250)
-        logo.BackgroundColor3 = accent
-        logo.BackgroundTransparency = 0.1
-        local logoCorner = Instance.new("UICorner")
-        logoCorner.CornerRadius = UDim.new(0, 12)
-        logoCorner.Parent = logo
+    if topLogo then
+        hasLogo = true
+        topLogo.Name = "Logo"
+        topLogo.BackgroundTransparency = 1
+        topLogo.AnchorPoint = Vector2.new(0, 0.5)
+        topLogo.Position = UDim2.new(0, 12, 0, 19)
+        topLogo.Size = UDim2.new(0, 16, 0, 16)
+        topLogo.Parent = card
     end
-    logo.Name = "Logo"
-    logo.AnchorPoint = Vector2.new(0.5, 0)
-    logo.Position = UDim2.new(0.5, 0, 0, 28)
-    logo.Size = UDim2.new(0, 44, 0, 44)
-    logo.BorderSizePixel = 0
-    logo.Parent = card
 
     local titleLabel = Instance.new("TextLabel")
     titleLabel.Name = "Title"
     titleLabel.BackgroundTransparency = 1
     titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextSize = 17
-    titleLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+    titleLabel.TextSize = 13
+    titleLabel.TextColor3 = textColor
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
     titleLabel.Text = title
-    titleLabel.Position = UDim2.new(0, 20, 0, 84)
-    titleLabel.Size = UDim2.new(1, -40, 0, 22)
+    titleLabel.Position = UDim2.new(0, hasLogo and 36 or 12, 0, 0)
+    titleLabel.Size = UDim2.new(1, -(hasLogo and 48 or 24), 0, 38)
     titleLabel.Parent = card
+
+    local topLine = Instance.new("Frame")
+    topLine.Name = "TopLine"
+    topLine.Position = UDim2.new(0, 0, 0, 38)
+    topLine.Size = UDim2.new(1, 0, 0, 1)
+    topLine.BackgroundColor3 = borderColor
+    topLine.BackgroundTransparency = 0.5
+    topLine.BorderSizePixel = 0
+    topLine.Parent = card
 
     local subLabel = Instance.new("TextLabel")
     subLabel.Name = "Subtitle"
@@ -1019,37 +1005,40 @@ function FlurioreLib:RequireKey(KeyConfig)
     subLabel.Font = Enum.Font.Gotham
     subLabel.TextSize = 12
     subLabel.TextColor3 = muted
+    subLabel.TextXAlignment = Enum.TextXAlignment.Left
     subLabel.Text = subtitle
-    subLabel.Position = UDim2.new(0, 20, 0, 108)
-    subLabel.Size = UDim2.new(1, -40, 0, 16)
+    subLabel.Position = UDim2.new(0, 12, 0, 46)
+    subLabel.Size = UDim2.new(1, -24, 0, 16)
     subLabel.Parent = card
 
+    -- input: same fill as the menu's element rows
     local inputFrame = Instance.new("Frame")
     inputFrame.Name = "Input"
-    inputFrame.Position = UDim2.new(0, 20, 0, 140)
-    inputFrame.Size = UDim2.new(1, -40, 0, 40)
-    inputFrame.BackgroundColor3 = Color3.fromRGB(24, 25, 34)
+    inputFrame.Position = UDim2.new(0, 12, 0, 70)
+    inputFrame.Size = UDim2.new(1, -24, 0, 32)
+    inputFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    inputFrame.BackgroundTransparency = 0.935
     inputFrame.BorderSizePixel = 0
     inputFrame.Parent = card
     local inputCorner = Instance.new("UICorner")
-    inputCorner.CornerRadius = UDim.new(0, 9)
+    inputCorner.CornerRadius = UDim.new(0, 4)
     inputCorner.Parent = inputFrame
     local inputStroke = Instance.new("UIStroke")
-    inputStroke.Color = Color3.fromRGB(255, 255, 255)
+    inputStroke.Color = accent
     inputStroke.Thickness = 1
-    inputStroke.Transparency = 0.88
+    inputStroke.Transparency = 1
     inputStroke.Parent = inputFrame
 
     local box = Instance.new("TextBox")
     box.Name = "KeyBox"
     box.BackgroundTransparency = 1
-    box.Position = UDim2.new(0, 12, 0, 0)
-    box.Size = UDim2.new(1, -24, 1, 0)
+    box.Position = UDim2.new(0, 10, 0, 0)
+    box.Size = UDim2.new(1, -20, 1, 0)
     box.Font = Enum.Font.Gotham
-    box.TextSize = 13
-    box.TextColor3 = Color3.fromRGB(235, 235, 240)
-    box.PlaceholderText = tostring(KeyConfig.Placeholder or "Paste your key")
-    box.PlaceholderColor3 = Color3.fromRGB(95, 99, 115)
+    box.TextSize = 12
+    box.TextColor3 = textColor
+    box.PlaceholderText = tostring(KeyConfig.Placeholder or "Enter your key")
+    box.PlaceholderColor3 = muted
     box.Text = ""
     box.ClearTextOnFocus = false
     box.TextXAlignment = Enum.TextXAlignment.Left
@@ -1059,29 +1048,30 @@ function FlurioreLib:RequireKey(KeyConfig)
     verify.Name = "Verify"
     verify.Text = verifyLabel
     verify.Font = Enum.Font.GothamBold
-    verify.TextSize = 13
-    verify.TextColor3 = Color3.fromRGB(12, 10, 20)
+    verify.TextSize = 12
+    verify.TextColor3 = bgColor
     verify.AutoButtonColor = false
     verify.BackgroundColor3 = accent
-    verify.BackgroundTransparency = 0.04
+    verify.BackgroundTransparency = 0
     verify.BorderSizePixel = 0
-    verify.Position = UDim2.new(0, 20, 0, 192)
-    verify.Size = UDim2.new(1, -40, 0, 40)
+    verify.Position = UDim2.new(0, 12, 0, 110)
+    verify.Size = UDim2.new(1, -24, 0, 32)
     verify.Parent = card
     local verifyCorner = Instance.new("UICorner")
-    verifyCorner.CornerRadius = UDim.new(0, 9)
+    verifyCorner.CornerRadius = UDim.new(0, 4)
     verifyCorner.Parent = verify
 
     local status = Instance.new("TextLabel")
     status.Name = "Status"
     status.BackgroundTransparency = 1
     status.Font = Enum.Font.Gotham
-    status.TextSize = 12
+    status.TextSize = 11
     status.TextColor3 = muted
-    status.TextWrapped = true
+    status.TextXAlignment = Enum.TextXAlignment.Left
+    status.TextTruncate = Enum.TextTruncate.AtEnd
     status.Text = ""
-    status.Position = UDim2.new(0, 20, 0, statusY)
-    status.Size = UDim2.new(1, -40, 0, 16)
+    status.Position = UDim2.new(0, 12, 0, statusY)
+    status.Size = UDim2.new(1, -24, 0, 14)
     status.Parent = card
 
     setStatus = function(text, color)
@@ -1091,8 +1081,7 @@ function FlurioreLib:RequireKey(KeyConfig)
 
     copyText = function(text)
         if type(setclipboard) == "function" then
-            local okCopy = pcall(setclipboard, text)
-            return okCopy
+            return (pcall(setclipboard, text))
         end
         return false
     end
@@ -1120,38 +1109,46 @@ function FlurioreLib:RequireKey(KeyConfig)
         end
     end
 
+    -- Get key: plain text rows under a hairline, like the menu's secondary actions
+    if #buttons > 0 then
+        local sep = Instance.new("Frame")
+        sep.Name = "Separator"
+        sep.Position = UDim2.new(0, 12, 0, linkTop - 8)
+        sep.Size = UDim2.new(1, -24, 0, 1)
+        sep.BackgroundColor3 = borderColor
+        sep.BackgroundTransparency = 0.5
+        sep.BorderSizePixel = 0
+        sep.Parent = card
+    end
     for i, b in ipairs(buttons) do
         local btn = Instance.new("TextButton")
         btn.Name = "GetKey" .. i
         btn.Text = b.Label
         btn.Font = Enum.Font.Gotham
         btn.TextSize = 12
-        btn.TextColor3 = Color3.fromRGB(190, 192, 205)
+        btn.TextColor3 = muted
+        btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.AutoButtonColor = false
-        btn.BackgroundColor3 = Color3.fromRGB(24, 25, 34)
-        btn.BackgroundTransparency = 0
+        btn.BackgroundTransparency = 1
         btn.BorderSizePixel = 0
-        btn.Position = UDim2.new(0, 20, 0, linkTop + (i - 1) * 40)
-        btn.Size = UDim2.new(1, -40, 0, 34)
+        btn.Position = UDim2.new(0, 12, 0, linkTop + (i - 1) * 24)
+        btn.Size = UDim2.new(1, -24, 0, 22)
         btn.Parent = card
-        local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, 9)
-        btnCorner.Parent = btn
-        btn.MouseEnter:Connect(function() tw(btn, 0.18, {TextColor3 = Color3.fromRGB(240, 240, 245)}, Enum.EasingStyle.Quad):Play() end)
-        btn.MouseLeave:Connect(function() tw(btn, 0.18, {TextColor3 = Color3.fromRGB(190, 192, 205)}, Enum.EasingStyle.Quad):Play() end)
+        btn.MouseEnter:Connect(function() tw(btn, 0.18, {TextColor3 = textColor}, Enum.EasingStyle.Quad):Play() end)
+        btn.MouseLeave:Connect(function() tw(btn, 0.18, {TextColor3 = muted}, Enum.EasingStyle.Quad):Play() end)
         btn.Activated:Connect(function() runButton(b) end)
     end
 
     local function shake()
-        local offsets = {-10, 9, -7, 5, -2, 0}
-        local function step(i)
-            if i > #offsets then
+        local offsets = {-8, 7, -5, 3, -1, 0}
+        local function step(k)
+            if k > #offsets then
                 card.Position = restPos
                 return
             end
-            local t = tw(card, 0.05, {Position = restPos + UDim2.new(0, offsets[i], 0, 0)}, Enum.EasingStyle.Quad)
+            local t = tw(card, 0.05, {Position = restPos + UDim2.new(0, offsets[k], 0, 0)}, Enum.EasingStyle.Quad)
             t:Play()
-            t.Completed:Connect(function() step(i + 1) end)
+            t.Completed:Connect(function() step(k + 1) end)
         end
         step(1)
     end
@@ -1170,15 +1167,16 @@ function FlurioreLib:RequireKey(KeyConfig)
         TweenService:Create(root, info, {BackgroundTransparency = 1}):Play()
     end
 
+    local function fadeOutCard()
+        fadeTree(card, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In))
+        tw(card, 0.3, {Position = restPos + UDim2.new(0, 0, 0, 16)}, Enum.EasingStyle.Quint, Enum.EasingDirection.In):Play()
+    end
+
     local function success(label)
         setStatus(type(label) == "string" and label ~= "" and ("Access granted: " .. label) or "Access granted", good)
-        tw(cardStroke, 0.3, {Color = good, Transparency = 0.6}):Play()
-        task.delay(0.55, function()
-            local out = TweenInfo.new(0.36, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-            TweenService:Create(dim, out, {BackgroundTransparency = 1}):Play()
-            TweenService:Create(scale, out, {Scale = 0.94}):Play()
-            fadeTree(card, out)
-            task.delay(0.4, function()
+        task.delay(0.5, function()
+            fadeOutCard()
+            task.delay(0.3, function()
                 gui:Destroy()
                 finished:Fire(true)
             end)
@@ -1213,18 +1211,18 @@ function FlurioreLib:RequireKey(KeyConfig)
 
     verify.Activated:Connect(function() attempt(box.Text) end)
     box.FocusLost:Connect(function(enterPressed)
-        tw(inputStroke, 0.2, {Color = Color3.fromRGB(255, 255, 255), Transparency = 0.88}, Enum.EasingStyle.Quad):Play()
+        tw(inputStroke, 0.2, {Transparency = 1}, Enum.EasingStyle.Quad):Play()
         if enterPressed then attempt(box.Text) end
     end)
     box.Focused:Connect(function()
-        tw(inputStroke, 0.2, {Color = accent, Transparency = 0.35}, Enum.EasingStyle.Quad):Play()
+        tw(inputStroke, 0.2, {Transparency = 0.4}, Enum.EasingStyle.Quad):Play()
     end)
-    verify.MouseEnter:Connect(function() tw(verify, 0.18, {BackgroundTransparency = 0}, Enum.EasingStyle.Quad):Play() end)
-    verify.MouseLeave:Connect(function() tw(verify, 0.18, {BackgroundTransparency = 0.04}, Enum.EasingStyle.Quad):Play() end)
+    verify.MouseEnter:Connect(function() tw(verify, 0.18, {BackgroundTransparency = 0.12}, Enum.EasingStyle.Quad):Play() end)
+    verify.MouseLeave:Connect(function() tw(verify, 0.18, {BackgroundTransparency = 0}, Enum.EasingStyle.Quad):Play() end)
 
-    -- intro
-    tw(dim, 0.35, {BackgroundTransparency = 0.45}, Enum.EasingStyle.Quad):Play()
-    tw(scale, 0.45, {Scale = 1}):Play()
+    -- intro: rise and fade in, the same motion as the main window
+    card.Position = restPos + UDim2.new(0, 0, 0, 16)
+    tw(card, 0.45, {Position = restPos, BackgroundTransparency = 0.3}):Play()
 
     -- remembered key: check it quietly once the card is in
     local saved = readSavedKey()
@@ -1243,8 +1241,18 @@ function FlurioreLib:MakeGui(GuiConfig)
 	local GuiConfig = GuiConfig or {}
 	-- Key system (off by default). KeySystem = true + KeySettings = {...} blocks here until a key is accepted.
 	if GuiConfig.KeySystem then
-		local keySettings = type(GuiConfig.KeySettings) == "table" and GuiConfig.KeySettings or {}
-		if not FlurioreLib:RequireKey(keySettings) then
+		local source = type(GuiConfig.KeySettings) == "table" and GuiConfig.KeySettings or {}
+		local settings = {}
+		for k, v in pairs(source) do settings[k] = v end
+		if settings.Theme == nil then
+			local keyTheme = {}
+			for k, v in pairs(ThemePresets[GuiConfig.ThemePreset or "Dark"] or ThemePresets.Dark) do keyTheme[k] = v end
+			if type(GuiConfig.Theme) == "table" then
+				for k, v in pairs(GuiConfig.Theme) do keyTheme[k] = v end
+			end
+			settings.Theme = keyTheme
+		end
+		if not FlurioreLib:RequireKey(settings) then
 			return nil
 		end
 	end
