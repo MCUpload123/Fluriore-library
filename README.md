@@ -819,3 +819,204 @@ end)
 ```
 
 `OnChanged` works on Toggle, Slider, Input, Dropdown, Keybind, ColorPicker and ColorCycle. It returns the element, so calls can be chained. Listeners run in their own task, so one failing listener cannot break the others.
+
+
+---
+
+## Elements and popups (tier 1-2)
+
+### Code block (copyable)
+
+```lua
+Section:AddCode({Title = "Webhook", Code = "https://discord.com/api/webhooks/..."})
+```
+A "Copy" button copies the text. `:Set(text)` changes it, `:Copy()` copies from code.
+
+### Image
+
+```lua
+Section:AddImage({Image = "rbxassetid://123456789", Height = 140, Crop = false})
+```
+`:Set(id)` changes the picture and `:SetHeight(h)` changes its height. Only `rbxassetid://` images work.
+
+### Space and group
+
+```lua
+Section:AddSpace(8)
+
+local Group = Section:AddGroup({Columns = 2})
+Group[1]:AddToggle({Title = "Left", Flag = "left", Callback = function() end})
+Group[2]:AddSlider({Title = "Right", Min = 0, Max = 100, Flag = "right", Callback = function() end})
+```
+Each column accepts every `Add*` method. The group grows to fit its tallest column.
+
+### Popup (window dialog)
+
+```lua
+Window:Popup({
+  Title = "Reset settings",
+  Content = "This clears every saved value. Continue?",
+  Buttons = {
+    {Title = "Cancel", Primary = false},
+    {Title = "Reset", Callback = function(popup) print("reset") end},  -- Close = false keeps it open
+  },
+})
+```
+The last button is the primary one unless you set `Primary`. Pressing a button closes the popup unless `Close = false`.
+
+### Notification with buttons
+
+```lua
+FlurioreLib:MakeNotify({
+  Title = "Deleted",
+  Content = "The config was removed.",
+  Buttons = {
+    {Title = "Undo", Callback = function() print("undo") end},
+  },
+})
+```
+
+### Element helpers
+
+Every element now has `:Destroy()`, `:SetTitle(text)` and `:SetDesc(text)`. `SetTitle` and `SetDesc` change the first and second text labels in the element. Elements with a custom layout (such as Label) may need `Set` instead.
+
+### Keybind modes
+
+```lua
+Section:AddKeybind({
+  Title = "Boost",
+  Default = Enum.KeyCode.LeftShift,
+  Flag = "boost",
+  Mode = "Hold",                          -- "Toggle" (default), "Hold" or "Always"
+  OnTrigger = function(active) print("boost", active) end,
+})
+```
+`Toggle` flips on each press, `Hold` is true while the key is held, and `Always` is on all the time. `:SetMode(mode)` changes the mode and `:GetState()` returns the current state. The existing `Callback` still runs when the key is set.
+
+### Searchable dropdown
+
+```lua
+Section:AddDropdown({
+  Title = "Target",
+  Options = {"Alpha", "Beta", "Gamma"},
+  Searchable = true,
+  SearchPlaceholder = "Search options...",
+  Callback = function(value) end,
+})
+```
+
+### Color picker alpha and hex
+
+The color picker now has an alpha bar and a hex box. `Alpha = 0.5` sets the starting alpha. `Callback(color, alpha)` receives both values, and `:SetAlpha(a)` changes the alpha. The flag saves `{r, g, b, a}`.
+
+### Tab icons
+
+`CreateTab({Icon = "rbxassetid://..."})` already shows an image icon. Text icons are not supported yet.
+
+
+---
+
+## Elements (tier 3)
+
+### Text area (multi-line)
+
+```lua
+Section:AddTextArea({
+  Title = "Notes",
+  Content = "Shown under the title",
+  Placeholder = "Write something...",
+  Height = 96,
+  Default = "",
+  Flag = "notes",
+  Callback = function(value) end,   -- fires when focus leaves the box
+})
+```
+`:Get()`, `:Set(text)` and `:Clear()` work as usual. `OnChanged` works here too.
+
+### Progress bar
+
+```lua
+local bar = Section:AddProgress({Title = "Download", Default = 35, Max = 100, Color = Color3.fromRGB(120, 220, 160)})
+bar:Set(80)                   -- animates to the new value
+bar:SetLabel("Almost done")   -- replaces the right-hand text
+```
+`Format = function(value, max) return "..." end` changes the right-hand text.
+
+### Log console
+
+```lua
+local log = Section:AddLog({Title = "Console", Lines = 6, Timestamp = true})
+log:Add("Script loaded", Color3.fromRGB(120, 220, 160))
+log:Add("Warning: retrying")
+log:Clear()
+```
+Only the newest lines are shown. New lines fade in and the oldest one is removed.
+
+### Sub-tabs
+
+```lua
+local tabs = Section:AddSubTabs({"General", "Advanced"})
+tabs[1]:AddToggle({Title = "Option A", Callback = function() end})
+tabs[2]:AddSlider({Title = "Power", Min = 0, Max = 100, Callback = function() end})
+tabs:Select(2)
+```
+Each page accepts every `Add*` method, the same as Group columns. The section resizes to fit the open page.
+
+### Tag
+
+```lua
+local tags = Section:AddTag({
+  Title = "Status",
+  Tags = {"Beta", {Text = "Stable", Color = Color3.fromRGB(120, 220, 160)}},
+})
+tags:Add("New")
+tags:Set({"Only this"})
+```
+
+### Card (link card)
+
+```lua
+Section:AddCard({
+  Title = "Discord",
+  Content = "Join the community",
+  ButtonLabel = "Join",
+  Image = "rbxassetid://123456789",   -- optional; otherwise the first letter is shown
+  Url = "https://discord.gg/your-invite",   -- or Action = function() end
+})
+```
+The button tries to open the link. If that fails, the link is copied and a notification shows it.
+
+### Viewport (3D preview)
+
+```lua
+Section:AddViewport({
+  Model = workspace:FindFirstChildWhichIsA("Model"),   -- any Model or BasePart instance
+  Height = 150,
+})
+```
+The model is cloned into a preview that slowly rotates. Its parts are anchored and not collidable. `:SetModel(instance)` changes the model.
+
+### Not included
+
+- **Video and audio** are not included. Roblox GUI can only play uploaded video assets (`VideoFrame`) and cannot show arbitrary media links, so the element would fail for most users.
+- **Video and audio** are covered above.
+
+### Discord widget (live)
+
+```lua
+Section:AddDiscord({
+  Invite = "https://discord.gg/your-invite",   -- full link, discord.com/invite/... or the bare code
+  Refresh = 60,                                 -- seconds, minimum 30
+})
+```
+
+The card shows the server icon, name, description (or the channel name), online and member counts, and the names of up to three online members. The **Join** button opens the invite, and copies it if it cannot be opened.
+
+It uses Discord's public endpoints and needs no token:
+
+- `GET discord.com/api/v10/invites/{code}?with_counts=true` for the name, icon, description and counts.
+- `GET discord.com/api/guilds/{id}/widget.json` for the live online list. This only works when the server owner has enabled the widget. If it is off, the card shows the invite counts and hides the list.
+
+Results are cached for 20 seconds. The card refreshes at most every 30 seconds. If Discord rate-limits the request, it waits for `Retry-After`. The server icon is downloaded and cached with `writefile` and `getcustomasset` when the executor supports them, and a letter is shown otherwise.
+
+Methods: `:Refresh()`, `:SetInvite(text)`, `:GetData()`, `:Join()`.

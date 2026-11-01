@@ -442,6 +442,63 @@ SecWindow:AddButton({
 	end,
 })
 
+-- new elements (tier 1-2)
+SecElements:AddSpace(8)
+SecElements:AddCode({ Title = "Webhook example", Code = "https://discord.com/api/webhooks/your-id/your-token" })
+
+local ExtraGroup = SecElements:AddGroup({ Columns = 2 })
+ExtraGroup[1]:AddToggle({ Title = "Left", Flag = "left_toggle", Callback = function() end })
+ExtraGroup[2]:AddToggle({ Title = "Right", Flag = "right_toggle", Callback = function() end })
+
+SecElements:AddKeybind({
+	Title = "Boost",
+	Content = "Hold to boost",
+	Default = Enum.KeyCode.LeftShift,
+	Flag = "boost_key",
+	Mode = "Hold",
+	OnTrigger = function(active) print("boost", active) end,
+})
+
+SecElements:AddDropdown({
+	Title = "Target",
+	Options = {"Alpha", "Beta", "Gamma"},
+	Searchable = true,
+	Callback = function() end,
+})
+
+SecWindow:AddButton({
+	Title = "Reset settings",
+	Content = "Opens a popup",
+	Callback = function()
+		Window:Popup({
+			Title = "Reset settings",
+			Content = "This clears every saved value. Continue?",
+			Buttons = {
+				{ Title = "Cancel", Primary = false },
+				{ Title = "Reset", Callback = function() print("reset") end },
+			},
+		})
+	end,
+})
+
+-- tier 3 elements
+SecElements:AddTextArea({ Title = "Notes", Content = "Multi-line text box", Placeholder = "Write something...", Height = 80, Callback = function() end })
+SecElements:AddProgress({ Title = "Download", Default = 35, Max = 100, Color = Color3.fromRGB(120, 220, 160) })
+local Console = SecElements:AddLog({ Title = "Console", Lines = 6 })
+Console:Add("Script loaded", Color3.fromRGB(120, 220, 160))
+local SubPages = SecElements:AddSubTabs({ "General", "Advanced" })
+SubPages[1]:AddToggle({ Title = "General option", Callback = function() end })
+SubPages[2]:AddSlider({ Title = "Advanced value", Min = 0, Max = 100, Default = 50, Callback = function() end })
+SecElements:AddTag({ Title = "Status", Tags = {"Beta", {Text = "Stable", Color = Color3.fromRGB(120, 220, 160)}} })
+SecElements:AddCard({ Title = "Discord", Content = "Join the community", ButtonLabel = "Join", Url = "https://discord.gg/your-invite" })
+local previewModel = workspace:FindFirstChildWhichIsA("Model")
+if previewModel then
+	SecElements:AddViewport({ Model = previewModel, Height = 140 })
+end
+
+-- Discord widget (replace the invite with your own server)
+SecElements:AddDiscord({ Invite = "https://discord.gg/your-invite", Refresh = 60 })
+
 -- try load previous session if file exists
 pcall(function()
 	Window:LoadConfig("FlurioreConfigs", "demo")

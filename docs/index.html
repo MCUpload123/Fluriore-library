@@ -712,6 +712,58 @@ Toggle:OnChanged(function(value)
     print("auto farm is now", value)
 end)</code></pre>
           <p class="subtle"><code>OnChanged</code> works on Toggle, Slider, Input, Dropdown, Keybind, ColorPicker and ColorCycle, and it can be chained.</p>
+
+          <h3>Code, image, space and group</h3>
+          <pre data-lang="Luau"><code>Section:AddCode({Title = "Webhook", Code = "https://..."})
+Section:AddImage({Image = "rbxassetid://123456789", Height = 140})
+Section:AddSpace(8)
+
+local Group = Section:AddGroup({Columns = 2})
+Group[1]:AddToggle({Title = "Left", Callback = function() end})
+Group[2]:AddSlider({Title = "Right", Min = 0, Max = 100, Callback = function() end})</code></pre>
+
+          <h3>Popup and notification buttons</h3>
+          <pre data-lang="Luau"><code>Window:Popup({
+    Title = "Reset settings",
+    Content = "This clears every saved value. Continue?",
+    Buttons = {
+        {Title = "Cancel", Primary = false},
+        {Title = "Reset", Callback = function() print("reset") end},
+    },
+})
+
+FlurioreLib:MakeNotify({
+    Title = "Deleted",
+    Content = "The config was removed.",
+    Buttons = {{Title = "Undo", Callback = function() print("undo") end}},
+})</code></pre>
+
+          <h3>Keybind modes, searchable dropdown and color alpha</h3>
+          <pre data-lang="Luau"><code>Section:AddKeybind({Title = "Boost", Default = Enum.KeyCode.LeftShift, Mode = "Hold",
+    OnTrigger = function(active) print("boost", active) end})
+Section:AddDropdown({Title = "Target", Options = {"Alpha", "Beta"}, Searchable = true, Callback = function() end})
+Section:AddColorPicker({Title = "Accent", Alpha = 0.8, Callback = function(color, alpha) end})</code></pre>
+          <p class="subtle">Every element also has <code>:Destroy()</code>, <code>:SetTitle(text)</code> and <code>:SetDesc(text)</code>.</p>
+
+          <h3>Tier 3 elements</h3>
+          <pre data-lang="Luau"><code>Section:AddTextArea({Title = "Notes", Height = 96, Callback = function(v) end})
+local bar = Section:AddProgress({Title = "Download", Default = 35, Max = 100})
+bar:Set(80)
+local log = Section:AddLog({Title = "Console", Lines = 6})
+log:Add("Script loaded")
+local tabs = Section:AddSubTabs({"General", "Advanced"})
+tabs[2]:AddSlider({Title = "Power", Min = 0, Max = 100, Callback = function() end})
+Section:AddTag({Title = "Status", Tags = {"Beta"}})
+Section:AddCard({Title = "Discord", ButtonLabel = "Join", Url = "https://discord.gg/..."})
+Section:AddViewport({Model = workspace:FindFirstChildWhichIsA("Model"), Height = 150})</code></pre>
+          <p class="subtle">Video and audio are not included. Roblox GUI cannot play arbitrary media links.</p>
+
+          <h3>Discord widget (live)</h3>
+          <pre data-lang="Luau"><code>Section:AddDiscord({
+    Invite = "https://discord.gg/your-invite",
+    Refresh = 60,
+})</code></pre>
+          <p>Shows the server icon, name, description, live online count, member count and up to three online names. It uses Discord's public invite and widget endpoints and needs no token. The live list needs the server owner to enable the widget. Results are cached and refreshed at most every 30 seconds.</p>
         </section>
 
         <section class="doc-section" data-search-section>
