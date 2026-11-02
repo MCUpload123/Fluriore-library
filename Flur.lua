@@ -6898,7 +6898,12 @@ end
 						if typeof(m) ~= "Instance" or not (m:IsA("Model") or m:IsA("BasePart")) then
 							return false
 						end
-						model = m:Clone()
+						local okClone, cloned = pcall(function() return m:Clone() end)
+						model = okClone and cloned or nil
+						if not model then
+							warn("[AddViewport] the model could not be cloned (its Archivable property is false)")
+							return false
+						end
 						if model:IsA("BasePart") then
 							model.Anchored = true
 							model.CanCollide = false
@@ -6958,20 +6963,25 @@ end
 			-- Public and unauthenticated. Results are cached for 20 seconds, and the card refreshes at most every 30 seconds.
 			do
 				local discordCache = {}
+				local BLURPLE = Color3.fromRGB(88, 101, 242)
+				local GREEN = Color3.fromRGB(59, 165, 93)
+				local GREEN_HOVER = Color3.fromRGB(46, 125, 72)
+				local ONLINE = "#23A55A"
+				local OFFLINE = "#80848E"
 
 				local function openExternal(url)
 					local GuiService = game:GetService("GuiService")
 					local okOpen = pcall(function() GuiService:OpenBrowserWindow(url) end)
 					if okOpen then
-						FlurioreLib:MakeNotify({Title = "Link", Content = "Opened in your browser", Delay = 2})
+						FlurioreLib:MakeNotify({Title = "Discord", Content = "Opened the invite in your browser", Delay = 2})
 						return true
 					end
 					if type(setclipboard) == "function" then
 						pcall(setclipboard, url)
-						FlurioreLib:MakeNotify({Title = "Link copied", Content = url, Delay = 3})
+						FlurioreLib:MakeNotify({Title = "Invite copied", Content = url, Delay = 3})
 						return true
 					end
-					FlurioreLib:MakeNotify({Title = "Link", Content = url, Delay = 4})
+					FlurioreLib:MakeNotify({Title = "Discord", Content = url, Delay = 4})
 					return false
 				end
 
@@ -6985,10 +6995,8 @@ end
 
 				local function fmtNumber(n)
 					local digits = tostring(math.floor(tonumber(n) or 0))
-					local reversed = string.reverse(digits)
-					local grouped = (string.gsub(reversed, "(%d%d%d)", "%1,"))
-					local out = string.reverse(grouped)
-					return (string.gsub(out, "^,", ""))
+					local grouped = (string.gsub(string.reverse(digits), "(%d%d%d)", "%1,"))
+					return (string.gsub(string.reverse(grouped), "^,", ""))
 				end
 
 				local function escapeRich(text)
@@ -6998,21 +7006,32 @@ end
 					return out
 				end
 
+				local function requestFn()
+					if type(request) == "function" then return request end
+					if type(http_request) == "function" then return http_request end
+					return nil
+				end
+
 				local function httpJson(url)
-					local reqFn = (type(request) == "function" and request) or (type(http_request) == "function" and http_request) or nil
-					local body, status, retry
+					local reqFn = requestFn()
+					local body, status
 					if reqFn then
-						local okReq, res = pcall(reqFn, {Url = url, Method = "GET", Headers = {Accept = "application/json"}})
+						local okReq, res = pcall(reqFn, {
+							Url = url,
+							Method = "GET",
+							Headers = {Accept = "application/json", ["User-Agent"] = "FlurioreLib/1.0"},
+						})
 						if not okReq or type(res) ~= "table" then return nil, "Network error" end
 						body, status = res.Body, res.StatusCode
-						local headers = type(res.Headers) == "table" and res.Headers or {}
-						retry = tonumber(headers["retry-after"] or headers["Retry-After"])
+						if status == 429 then
+							local headers = type(res.Headers) == "table" and res.Headers or {}
+							return nil, "Rate limited", tonumber(headers["retry-after"] or headers["Retry-After"]) or 30, 429
+						end
 					else
 						local okGet, text = pcall(function() return game:HttpGet(url) end)
 						if not okGet then return nil, "Network error" end
 						body = text
 					end
-					if status == 429 then return nil, "Rate limited", retry or 30, 429 end
 					if type(status) == "number" and status >= 400 then
 						return nil, "HTTP " .. tostring(status), nil, status
 					end
@@ -7052,20 +7071,50 @@ end
 					return {presence = tonumber(data.presence_count), names = names}
 				end
 
+				-- the CDN returns raw image bytes; reject anything that is not an image (e.g. an error page)
+				local function isImageBytes(bytes)
+					if type(bytes) ~= "string" or #bytes < 8 then return false end
+					local b1, b2, b3, b4 = string.byte(bytes, 1, 4)
+					if b1 == 137 and b2 == 80 and b3 == 78 and b4 == 71 then return true end
+					if b1 == 255 and b2 == 216 then return true end
+					if string.sub(bytes, 1, 4) == "RIFF" then return true end
+					return false
+				end
+
+				local function downloadBytes(url)
+					local reqFn = requestFn()
+					if reqFn then
+						local okReq, res = pcall(reqFn, {Url = url, Method = "GET"})
+						if okReq and type(res) == "table" and res.StatusCode == 200 then return res.Body end
+						return nil
+					end
+					local okGet, body = pcall(function() return game:HttpGet(url) end)
+					if okGet then return body end
+					return nil
+				end
+
 				local function loadIcon(info, iconImage, letter)
-					if not info.icon or type(writefile) ~= "function" or type(getcustomasset) ~= "function" then return end
+					if not info.icon then return end
+					if type(writefile) ~= "function" or type(getcustomasset) ~= "function" then return end
 					local fileName = "FlurDiscord_" .. info.id .. "_" .. info.icon .. ".png"
 					task.spawn(function()
-						local okAsset, asset = pcall(function()
-							if not (type(isfile) == "function" and isfile(fileName)) then
-								writefile(fileName, game:HttpGet("https://cdn.discordapp.com/icons/" .. info.id .. "/" .. info.icon .. ".png?size=128"))
-							end
-							return getcustomasset(fileName)
-						end)
+						local needDownload = true
+						if type(isfile) == "function" and isfile(fileName) and type(readfile) == "function" then
+							local okRead, existing = pcall(readfile, fileName)
+							if okRead and isImageBytes(existing) then needDownload = false end
+						end
+						if needDownload then
+							local bytes = downloadBytes("https://cdn.discordapp.com/icons/" .. info.id .. "/" .. info.icon .. ".png?size=128")
+							if not isImageBytes(bytes) then return end
+							if not pcall(writefile, fileName, bytes) then return end
+						end
+						local okAsset, asset = pcall(getcustomasset, fileName)
 						if okAsset and asset and iconImage.Parent then
 							iconImage.Image = asset
+							iconImage.ImageTransparency = 1
 							iconImage.Visible = true
 							letter.Visible = false
+							TweenService:Create(iconImage, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {ImageTransparency = 0}):Play()
 						end
 					end)
 				end
@@ -7077,41 +7126,68 @@ end
 					local DiscordFunc = {}
 					local alive = true
 					local busy = false
+					local loading = true
 					local nextDelay = interval
 					local lastData = nil
 
+					-- card: 36px banner, icon overlapping it, name, stats, description, live list, Join button
 					local Row = Instance.new("Frame")
 					Row.Name = "Discord"
 					Row.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 					Row.BackgroundTransparency = 0.935
 					Row.BorderSizePixel = 0
+					Row.ClipsDescendants = true
 					Row.LayoutOrder = CountItem
-					Row.Size = UDim2.new(1, 0, 0, 96)
+					Row.Size = UDim2.new(1, 0, 0, 158)
 					Row.Parent = SectionAdd
 					local RowCorner = Instance.new("UICorner")
-					RowCorner.CornerRadius = UDim.new(0, 4)
+					RowCorner.CornerRadius = UDim.new(0, 6)
 					RowCorner.Parent = Row
+
+					local Banner = Instance.new("Frame")
+					Banner.Name = "Banner"
+					Banner.BackgroundColor3 = BLURPLE
+					Banner.BackgroundTransparency = 0.1
+					Banner.BorderSizePixel = 0
+					Banner.Size = UDim2.new(1, 0, 0, 36)
+					Banner.Parent = Row
+					local BannerCorner = Instance.new("UICorner")
+					BannerCorner.CornerRadius = UDim.new(0, 6)
+					BannerCorner.Parent = Banner
+					local BannerCover = Instance.new("Frame")
+					BannerCover.Name = "BannerCover"
+					BannerCover.BackgroundColor3 = BLURPLE
+					BannerCover.BackgroundTransparency = 0.1
+					BannerCover.BorderSizePixel = 0
+					BannerCover.Position = UDim2.new(0, 0, 0, 18)
+					BannerCover.Size = UDim2.new(1, 0, 0, 18)
+					BannerCover.Parent = Banner
 
 					local Icon = Instance.new("Frame")
 					Icon.Name = "Icon"
-					Icon.BackgroundColor3 = Theme.Accent
-					Icon.BackgroundTransparency = 0.85
+					Icon.BackgroundColor3 = BLURPLE
 					Icon.BorderSizePixel = 0
-					Icon.Position = UDim2.new(0, 12, 0, 12)
-					Icon.Size = UDim2.new(0, 44, 0, 44)
+					Icon.Position = UDim2.new(0, 14, 0, 18)
+					Icon.Size = UDim2.new(0, 52, 0, 52)
+					Icon.ZIndex = 2
 					Icon.Parent = Row
 					local IconCorner = Instance.new("UICorner")
-					IconCorner.CornerRadius = UDim.new(0, 10)
+					IconCorner.CornerRadius = UDim.new(0, 14)
 					IconCorner.Parent = Icon
+					local IconRing = Instance.new("UIStroke")
+					IconRing.Color = Theme.Background
+					IconRing.Thickness = 3
+					IconRing.Parent = Icon
 
 					local Letter = Instance.new("TextLabel")
 					Letter.Name = "Letter"
 					Letter.BackgroundTransparency = 1
 					Letter.Font = Enum.Font.GothamBold
-					Letter.TextSize = 18
-					Letter.TextColor3 = Theme.Accent
+					Letter.TextSize = 20
+					Letter.TextColor3 = Color3.fromRGB(255, 255, 255)
 					Letter.Text = "D"
 					Letter.Size = UDim2.new(1, 0, 1, 0)
+					Letter.ZIndex = 3
 					Letter.Parent = Icon
 
 					local IconImage = Instance.new("ImageLabel")
@@ -7119,36 +7195,24 @@ end
 					IconImage.BackgroundTransparency = 1
 					IconImage.Visible = false
 					IconImage.Size = UDim2.new(1, 0, 1, 0)
+					IconImage.ZIndex = 3
 					IconImage.Parent = Icon
 					local IconImageCorner = Instance.new("UICorner")
-					IconImageCorner.CornerRadius = UDim.new(0, 10)
+					IconImageCorner.CornerRadius = UDim.new(0, 14)
 					IconImageCorner.Parent = IconImage
 
 					local NameLabel = Instance.new("TextLabel")
 					NameLabel.Name = "ServerName"
 					NameLabel.BackgroundTransparency = 1
 					NameLabel.Font = Enum.Font.GothamBold
-					NameLabel.TextSize = 13
+					NameLabel.TextSize = 14
 					NameLabel.TextColor3 = Theme.Text
 					NameLabel.TextXAlignment = Enum.TextXAlignment.Left
 					NameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 					NameLabel.Text = code and ("discord.gg/" .. code) or "Discord"
-					NameLabel.Position = UDim2.new(0, 68, 0, 12)
-					NameLabel.Size = UDim2.new(1, -176, 0, 16)
+					NameLabel.Position = UDim2.new(0, 76, 0, 44)
+					NameLabel.Size = UDim2.new(1, -90, 0, 18)
 					NameLabel.Parent = Row
-
-					local SubLabel = Instance.new("TextLabel")
-					SubLabel.Name = "Subtitle"
-					SubLabel.BackgroundTransparency = 1
-					SubLabel.Font = Enum.Font.Gotham
-					SubLabel.TextSize = 11
-					SubLabel.TextColor3 = Theme.MutedText
-					SubLabel.TextXAlignment = Enum.TextXAlignment.Left
-					SubLabel.TextTruncate = Enum.TextTruncate.AtEnd
-					SubLabel.Text = ""
-					SubLabel.Position = UDim2.new(0, 68, 0, 30)
-					SubLabel.Size = UDim2.new(1, -176, 0, 14)
-					SubLabel.Parent = Row
 
 					local StatsLabel = Instance.new("TextLabel")
 					StatsLabel.Name = "Stats"
@@ -7160,9 +7224,22 @@ end
 					StatsLabel.TextTruncate = Enum.TextTruncate.AtEnd
 					StatsLabel.RichText = true
 					StatsLabel.Text = "Loading..."
-					StatsLabel.Position = UDim2.new(0, 68, 0, 50)
-					StatsLabel.Size = UDim2.new(1, -176, 0, 14)
+					StatsLabel.Position = UDim2.new(0, 76, 0, 63)
+					StatsLabel.Size = UDim2.new(1, -90, 0, 14)
 					StatsLabel.Parent = Row
+
+					local SubLabel = Instance.new("TextLabel")
+					SubLabel.Name = "Subtitle"
+					SubLabel.BackgroundTransparency = 1
+					SubLabel.Font = Enum.Font.Gotham
+					SubLabel.TextSize = 11
+					SubLabel.TextColor3 = Theme.MutedText
+					SubLabel.TextXAlignment = Enum.TextXAlignment.Left
+					SubLabel.TextTruncate = Enum.TextTruncate.AtEnd
+					SubLabel.Text = ""
+					SubLabel.Position = UDim2.new(0, 14, 0, 82)
+					SubLabel.Size = UDim2.new(1, -28, 0, 14)
+					SubLabel.Parent = Row
 
 					local LiveLabel = Instance.new("TextLabel")
 					LiveLabel.Name = "Live"
@@ -7174,49 +7251,79 @@ end
 					LiveLabel.TextTruncate = Enum.TextTruncate.AtEnd
 					LiveLabel.Visible = false
 					LiveLabel.Text = ""
-					LiveLabel.Position = UDim2.new(0, 12, 0, 70)
-					LiveLabel.Size = UDim2.new(1, -24, 0, 14)
+					LiveLabel.Position = UDim2.new(0, 14, 0, 98)
+					LiveLabel.Size = UDim2.new(1, -28, 0, 14)
 					LiveLabel.Parent = Row
+
+					local JoinHolder = Instance.new("Frame")
+					JoinHolder.Name = "JoinHolder"
+					JoinHolder.BackgroundTransparency = 1
+					JoinHolder.Position = UDim2.new(0, 14, 0, 118)
+					JoinHolder.Size = UDim2.new(1, -28, 0, 30)
+					JoinHolder.Parent = Row
 
 					local JoinBtn = Instance.new("TextButton")
 					JoinBtn.Name = "Join"
-					JoinBtn.Text = "Join"
+					JoinBtn.Text = "Join Server"
 					JoinBtn.Font = Enum.Font.GothamBold
-					JoinBtn.TextSize = 12
-					JoinBtn.TextColor3 = Theme.Background
+					JoinBtn.TextSize = 13
+					JoinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 					JoinBtn.AutoButtonColor = false
-					JoinBtn.BackgroundColor3 = Theme.Accent
+					JoinBtn.BackgroundColor3 = GREEN
 					JoinBtn.BackgroundTransparency = 0
 					JoinBtn.BorderSizePixel = 0
-					JoinBtn.AnchorPoint = Vector2.new(1, 0)
-					JoinBtn.Position = UDim2.new(1, -12, 0, 12)
-					JoinBtn.Size = UDim2.new(0, 76, 0, 28)
-					JoinBtn.Parent = Row
+					JoinBtn.Size = UDim2.new(1, 0, 1, 0)
+					JoinBtn.Parent = JoinHolder
 					local JoinCorner = Instance.new("UICorner")
 					JoinCorner.CornerRadius = UDim.new(0, 4)
 					JoinCorner.Parent = JoinBtn
+					local JoinScale = Instance.new("UIScale")
+					JoinScale.Scale = 1
+					JoinScale.Parent = JoinBtn
+
 					JoinBtn.MouseEnter:Connect(function()
-						TweenService:Create(JoinBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {BackgroundTransparency = 0.15}):Play()
+						TweenService:Create(JoinBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {BackgroundColor3 = GREEN_HOVER}):Play()
 					end)
 					JoinBtn.MouseLeave:Connect(function()
-						TweenService:Create(JoinBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {BackgroundTransparency = 0}):Play()
+						TweenService:Create(JoinBtn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {BackgroundColor3 = GREEN}):Play()
 					end)
 					JoinBtn.Activated:Connect(function()
-						if code then openExternal("https://discord.gg/" .. code) end
+						TweenService:Create(JoinScale, TweenInfo.new(0.08, Enum.EasingStyle.Quad), {Scale = 0.97}):Play()
+						task.delay(0.08, function()
+							TweenService:Create(JoinScale, TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Scale = 1}):Play()
+						end)
+						if code then
+							openExternal("https://discord.gg/" .. code)
+						end
+					end)
+
+					-- banner pulses while the first request is running
+					task.spawn(function()
+						while alive and loading and Row.Parent do
+							TweenService:Create(Banner, TweenInfo.new(0.7, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.35}):Play()
+							task.wait(0.7)
+							if not (alive and loading and Row.Parent) then break end
+							TweenService:Create(Banner, TweenInfo.new(0.7, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.1}):Play()
+							task.wait(0.7)
+						end
+						Banner.BackgroundTransparency = 0.1
 					end)
 
 					local function renderError(message)
-						StatsLabel.Text = "Couldn't load: " .. escapeRich(message)
+						loading = false
+						StatsLabel.Text = "<font color=\"#F23F43\">Couldn't load:</font> " .. escapeRich(message)
+						JoinBtn.Text = code and "Join Server" or "No invite"
 					end
 
 					local function render(info, widget)
+						loading = false
 						NameLabel.Text = info.name
 						local desc = string.gsub(tostring(info.description or ""), "%s+", " ")
 						SubLabel.Text = (desc ~= "") and desc or ("#" .. tostring(info.channel or "general"))
 						local online = (widget and widget.presence) or info.online
 						StatsLabel.Text = string.format(
-							'<font color="#43B581">●</font> %s online    <font color="#747F8D">●</font> %s members',
-							fmtNumber(online), fmtNumber(info.members)
+							'<font color="%s">●</font> %s Online    <font color="%s">●</font> %s Members',
+							ONLINE, fmtNumber(online), OFFLINE, fmtNumber(info.members)
 						)
 						if widget and #widget.names > 0 then
 							local shown = {}
@@ -7290,6 +7397,7 @@ end
 							return false
 						end
 						code = newCode
+						loading = true
 						NameLabel.Text = "discord.gg/" .. code
 						task.spawn(function()
 							refresh(true)
