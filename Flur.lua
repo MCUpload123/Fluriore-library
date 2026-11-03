@@ -1349,6 +1349,17 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 	-- Measure wrapped descriptions with TextService instead of dividing TextBounds by
 	-- AbsoluteSize (which can be zero during creation and clips text on mobile).
+	local function plainTextOf(label)
+		local text = tostring(label.Text or "")
+		if label.RichText then
+			text = string.gsub(text, "<br%s*/?>", "\n")
+			text = string.gsub(text, "<[^>]+>", "")
+			text = string.gsub(text, "&lt;", "<")
+			text = string.gsub(text, "&gt;", ">")
+			text = string.gsub(text, "&amp;", "&")
+		end
+		return text
+	end
 	local function BindWrappedText(label, container, rightPadding, minimumTextHeight, minimumContainerHeight, bottomPadding, onResize)
 		local updating = false
 		local function update()
@@ -1359,8 +1370,8 @@ function FlurioreLib:MakeGui(GuiConfig)
 			local availableWidth = container.AbsoluteSize.X - leftPadding - dynamicRightPadding
 			if availableWidth < 24 then return end
 			updating = true
-			local measured = TextService:GetTextSize(tostring(label.Text or ""), label.TextSize, label.Font, Vector2.new(availableWidth, 10000))
-			local wantedTextHeight = math.max(minimumTextHeight or 12, math.ceil(measured.Y))
+			local measured = TextService:GetTextSize(plainTextOf(label), label.TextSize, label.Font, Vector2.new(availableWidth, 10000))
+			local wantedTextHeight = math.max(minimumTextHeight or 12, math.ceil(measured.Y) + 2)
 			local wantedXOffset = -(leftPadding + dynamicRightPadding)
 			if label.Size.X.Scale ~= 1 or label.Size.X.Offset ~= wantedXOffset or label.Size.Y.Offset ~= wantedTextHeight then
 				label.Size = UDim2.new(1, wantedXOffset, 0, wantedTextHeight)
@@ -3025,6 +3036,84 @@ function FlurioreLib:MakeGui(GuiConfig)
 		CircleClick(Min, Mouse.X, Mouse.Y)
 		SetMinimized(not IsMinimized)
 	end)
+
+-- Unified window fade: every GUI piece under Main uses the same TweenInfo, so the window
+-- fades and moves as one piece instead of some parts lagging behind.
+local windowFadeStore = setmetatable({}, {__mode = "k"})
+local windowAnimToken = 0
+local function fadeKeysFor(obj)
+    local keys = {}
+    if obj:IsA("GuiObject") then keys.BackgroundTransparency = true end
+    if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then keys.TextTransparency = true end
+    if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then keys.ImageTransparency = true end
+    if obj:IsA("ScrollingFrame") then keys.ScrollBarImageTransparency = true end
+    if obj:IsA("UIStroke") then keys.Transparency = true end
+    return keys
+end
+local function windowFade(root, show, info, overrides)
+    local function apply(obj)
+        local keys = fadeKeysFor(obj)
+        if next(keys) == nil then return end
+        local goal = {}
+        if show then
+            local saved = windowFadeStore[obj]
+            if saved then
+                for key, value in pairs(saved) do goal[key] = value end
+                windowFadeStore[obj] = nil
+            end
+            if overrides and overrides[obj] then
+                for key, value in pairs(overrides[obj]) do goal[key] = value end
+            end
+        else
+            local saved = windowFadeStore[obj]
+            if not saved then
+                saved = {}
+                for key in pairs(keys) do saved[key] = obj[key] end
+                windowFadeStore[obj] = saved
+            end
+            for key in pairs(keys) do goal[key] = 1 end
+        end
+        if next(goal) ~= nil then
+            TweenService:Create(obj, info, goal):Play()
+        end
+    end
+    apply(root)
+    for _, d in ipairs(root:GetDescendants()) do
+        apply(d)
+    end
+end
+
+local function animateWindow(show)
+    windowAnimToken = windowAnimToken + 1
+    local token = windowAnimToken
+    local offset = UDim2.new(0, 0, 0, 14)
+    local base = DropShadowHolder:GetAttribute("FlurBasePos")
+    if typeof(base) ~= "UDim2" then
+        base = DropShadowHolder.Position
+        DropShadowHolder:SetAttribute("FlurBasePos", base)
+    end
+    if show then
+        local info = TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        DropShadowHolder.Visible = true
+        DropShadowHolder.Position = base + offset
+        applyBackgroundLook()
+        local target = Main.BackgroundTransparency
+        Main.BackgroundTransparency = 1
+        windowFade(Main, true, info, {[Main] = {BackgroundTransparency = target}})
+        TweenService:Create(DropShadowHolder, info, {Position = base}):Play()
+    else
+        local info = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+        windowFade(Main, false, info)
+        local move = TweenService:Create(DropShadowHolder, info, {Position = base + offset})
+        move:Play()
+        move.Completed:Connect(function()
+            if token == windowAnimToken then
+                DropShadowHolder.Visible = false
+            end
+        end)
+    end
+end
+
 	local closing = false
 	local function fadeOutTree(root, info)
 	    for _, d in ipairs(root:GetDescendants()) do
@@ -3041,21 +3130,13 @@ function FlurioreLib:MakeGui(GuiConfig)
 	    end
 	end
 	Close.Activated:Connect(function()
-	    CircleClick(Close, Mouse.X, Mouse.Y)
-	    if closing then return end
-	    closing = true
-	    local fadeInfo = TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-	    fadeOutTree(Main, fadeInfo)
-	    TweenService:Create(Main, fadeInfo, {BackgroundTransparency = 1}):Play()
-	    local basePos = DropShadowHolder.Position
-	    TweenService:Create(
-	        DropShadowHolder,
-	        TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-	        {Position = basePos + UDim2.new(0, 0, 0, 16)}
-	    ):Play()
-	    task.delay(0.3, function()
-	        GuiFunc:DestroyGui()
-	    end)
+		CircleClick(Close, Mouse.X, Mouse.Y)
+		if closing then return end
+		closing = true
+		animateWindow(false)
+		task.delay(0.28, function()
+			GuiFunc:DestroyGui()
+		end)
 	end)
 
 	-- Topbar buttons: placed left of the Min button, right-to-left in creation order.
@@ -3295,30 +3376,12 @@ function FlurioreLib:MakeGui(GuiConfig)
 		if smooth ~= nil then useSmooth = not not smooth end
 		local opening = not DropShadowHolder.Visible
 		if useSmooth then
-			if opening then
-				DropShadowHolder.Visible = true
-				DropShadowHolder.BackgroundTransparency = 1
-				Main.BackgroundTransparency = 1
-				applyBackgroundLook()
-				local targetMain = Main.BackgroundTransparency
-				Main.BackgroundTransparency = 1
-				TweenService:Create(Main, TweenInfo.new(mobileCfg.TweenTime, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-					BackgroundTransparency = targetMain,
-				}):Play()
-			else
-				local hideInfo = TweenInfo.new(mobileCfg.TweenTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-				local tw = TweenService:Create(Main, hideInfo, {BackgroundTransparency = 1})
-				tw:Play()
-				tw.Completed:Connect(function()
-					DropShadowHolder.Visible = false
-					applyBackgroundLook()
-				end)
-			end
+			animateWindow(opening)
 		else
 			DropShadowHolder.Visible = not DropShadowHolder.Visible
 		end
 		refreshMobileToggleVisual()
-		return DropShadowHolder.Visible
+		return opening
 	end
 
 	local function ensureMobileToggle()
@@ -3353,31 +3416,39 @@ function FlurioreLib:MakeGui(GuiConfig)
 		icon.ZIndex = 101
 		icon.Parent = btn
 		mobileToggleIcon = icon
-		-- drag
-		local dragging, dragStart, startPos
+		-- drag: follows only the touch or mouse that pressed it. Other touches (e.g. the jump button) are ignored.
+		local dragInput = nil
+		local dragStartInput = nil
+		local dragStartPos = nil
+		local dragMoved = false
 		btn.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				dragging = true
-				dragStart = input.Position
-				startPos = btn.Position
-				input.Changed:Connect(function()
-					if input.UserInputState == Enum.UserInputState.End then
-						dragging = false
-					end
-				end)
-			end
+			if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+			if dragInput then return end
+			dragInput = input
+			dragStartInput = Vector2.new(input.Position.X, input.Position.Y)
+			dragStartPos = Vector2.new(btn.AbsolutePosition.X, btn.AbsolutePosition.Y)
+			dragMoved = false
 		end)
 		UserInputService.InputChanged:Connect(function(input)
-			if not dragging then return end
-			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-				local d = input.Position - dragStart
-				btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-				mobileCfg.Position = btn.Position
-			end
+			if input ~= dragInput then return end
+			local current = Vector2.new(input.Position.X, input.Position.Y)
+			local delta = current - dragStartInput
+			if not dragMoved and delta.Magnitude > 6 then dragMoved = true end
+			if not dragMoved then return end
+			local area = HirimiGui.AbsoluteSize
+			local x = math.clamp(dragStartPos.X + delta.X, 0, math.max(0, area.X - btn.AbsoluteSize.X))
+			local y = math.clamp(dragStartPos.Y + delta.Y, 0, math.max(0, area.Y - btn.AbsoluteSize.Y))
+			btn.Position = UDim2.fromOffset(x, y)
+			mobileCfg.Position = btn.Position
 		end)
-		local clickToken = 0
+		UserInputService.InputEnded:Connect(function(input)
+			if input == dragInput then dragInput = nil end
+		end)
 		btn.Activated:Connect(function()
-			-- ignore if dragged far
+			if dragMoved then
+				dragMoved = false
+				return
+			end
 			GuiFunc:ToggleUI()
 		end)
 		mobileToggleBtn = btn
@@ -4098,7 +4169,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 				ParagraphTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				ParagraphTitle.BorderSizePixel = 0
 				ParagraphTitle.Position = UDim2.new(0, 10, 0, 10)
-				ParagraphTitle.Size = UDim2.new(1, -16, 0, 13)
+				ParagraphTitle.Size = UDim2.new(1, -16, 0, 16)
 				ParagraphTitle.Name = "ParagraphTitle"
 				ParagraphTitle.Parent = Paragraph
 
@@ -4114,12 +4185,12 @@ if type(GuiConfig.MobileToggle) == "table" then
 				ParagraphContent.TextSize = 12
 				ParagraphContent.TextTransparency = 0.6000000238418579
 				ParagraphContent.TextXAlignment = Enum.TextXAlignment.Left
-				ParagraphContent.TextYAlignment = Enum.TextYAlignment.Bottom
+				ParagraphContent.TextYAlignment = Enum.TextYAlignment.Top
 				ParagraphContent.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 				ParagraphContent.BackgroundTransparency = 0.9990000128746033
 				ParagraphContent.BorderColor3 = Color3.fromRGB(0, 0, 0)
 				ParagraphContent.BorderSizePixel = 0
-				ParagraphContent.Position = UDim2.new(0, 10, 0, 23)
+				ParagraphContent.Position = UDim2.new(0, 10, 0, 27)
 				ParagraphContent.Name = "ParagraphContent"
 				ParagraphContent.Parent = Paragraph
 
@@ -6898,7 +6969,12 @@ end
 						if typeof(m) ~= "Instance" or not (m:IsA("Model") or m:IsA("BasePart")) then
 							return false
 						end
-						local okClone, cloned = pcall(function() return m:Clone() end)
+						local prevArchivable = m.Archivable
+						local okClone, cloned = pcall(function()
+							m.Archivable = true
+							return m:Clone()
+						end)
+						pcall(function() m.Archivable = prevArchivable end)
 						model = okClone and cloned or nil
 						if not model then
 							warn("[AddViewport] the model could not be cloned (its Archivable property is false)")
