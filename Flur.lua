@@ -1455,7 +1455,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 	local HirimiGui = Instance.new("ScreenGui");
 	local DropShadowHolder = Instance.new("Frame");
 	local DropShadow = Instance.new("ImageLabel");
-	local Main = Instance.new("Frame");
+	local Main = Instance.new("CanvasGroup");
 	local UICorner = Instance.new("UICorner");
 	local UIStroke = Instance.new("UIStroke");
 	local Top = Instance.new("Frame");
@@ -3037,52 +3037,9 @@ function FlurioreLib:MakeGui(GuiConfig)
 		SetMinimized(not IsMinimized)
 	end)
 
--- Unified window fade: every GUI piece under Main uses the same TweenInfo, so the window
--- fades and moves as one piece instead of some parts lagging behind.
-local windowFadeStore = setmetatable({}, {__mode = "k"})
+-- Window show/hide: the whole window is one CanvasGroup, so one GroupTransparency value fades every
+-- piece inside it at the same time. No per-object bookkeeping, so nothing can be left behind.
 local windowAnimToken = 0
-local function fadeKeysFor(obj)
-    local keys = {}
-    if obj:IsA("GuiObject") then keys.BackgroundTransparency = true end
-    if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then keys.TextTransparency = true end
-    if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then keys.ImageTransparency = true end
-    if obj:IsA("ScrollingFrame") then keys.ScrollBarImageTransparency = true end
-    if obj:IsA("UIStroke") then keys.Transparency = true end
-    return keys
-end
-local function windowFade(root, show, info, overrides)
-    local function apply(obj)
-        local keys = fadeKeysFor(obj)
-        if next(keys) == nil then return end
-        local goal = {}
-        if show then
-            local saved = windowFadeStore[obj]
-            if saved then
-                for key, value in pairs(saved) do goal[key] = value end
-                windowFadeStore[obj] = nil
-            end
-            if overrides and overrides[obj] then
-                for key, value in pairs(overrides[obj]) do goal[key] = value end
-            end
-        else
-            local saved = windowFadeStore[obj]
-            if not saved then
-                saved = {}
-                for key in pairs(keys) do saved[key] = obj[key] end
-                windowFadeStore[obj] = saved
-            end
-            for key in pairs(keys) do goal[key] = 1 end
-        end
-        if next(goal) ~= nil then
-            TweenService:Create(obj, info, goal):Play()
-        end
-    end
-    apply(root)
-    for _, d in ipairs(root:GetDescendants()) do
-        apply(d)
-    end
-end
-
 local function animateWindow(show)
     windowAnimToken = windowAnimToken + 1
     local token = windowAnimToken
@@ -3097,13 +3054,12 @@ local function animateWindow(show)
         DropShadowHolder.Visible = true
         DropShadowHolder.Position = base + offset
         applyBackgroundLook()
-        local target = Main.BackgroundTransparency
-        Main.BackgroundTransparency = 1
-        windowFade(Main, true, info, {[Main] = {BackgroundTransparency = target}})
+        Main.GroupTransparency = 1
+        TweenService:Create(Main, info, {GroupTransparency = 0}):Play()
         TweenService:Create(DropShadowHolder, info, {Position = base}):Play()
     else
         local info = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-        windowFade(Main, false, info)
+        TweenService:Create(Main, info, {GroupTransparency = 1}):Play()
         local move = TweenService:Create(DropShadowHolder, info, {Position = base + offset})
         move:Play()
         move.Completed:Connect(function()
