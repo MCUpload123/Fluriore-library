@@ -1020,3 +1020,59 @@ It uses Discord's public endpoints and needs no token:
 Results are cached for 20 seconds. The card refreshes at most every 30 seconds. If Discord rate-limits the request, it waits for `Retry-After`. The server icon is downloaded and cached with `writefile` and `getcustomasset` when the executor supports them, and a letter is shown otherwise.
 
 Methods: `:Refresh()`, `:SetInvite(text)`, `:GetData()`, `:Join()`.
+
+---
+
+## Stopping code when the window closes
+
+Closing the window (X or `Window:DestroyGui()`) stops the library's own listeners and loops. Code you write with the helpers below also stops, without any toggle being switched off.
+
+```lua
+local Window = FlurioreLib:MakeGui({NameHub = "My Hub"})
+
+Window:Loop(function()
+    print("runs every 2 seconds until the window closes")
+end, 2)
+
+Window:Spawn(function(name)
+    print("hello", name)
+end, "player")
+
+local connection = Window:Connect(game:GetService("RunService").Heartbeat, function(dt)
+end)
+
+Window:OnUnload(function()
+    print("window closed, cleanup here")
+end)
+
+while Window:Wait(0.5) do
+    print("works until the window closes")
+end
+```
+
+- `Window:IsAlive()` returns `false` after the window closes.
+- `Window:Wait(seconds)` returns `false` as soon as the window closes, so use it instead of `task.wait` in your own loops.
+- `Window:Connect`, `Window:Loop` and `Window:Spawn` are stopped automatically.
+
+Plain `task.spawn`, `while true do` loops and direct `:Connect` calls in your own code are not tracked. The library cannot stop them, so move them to these helpers if they need to stop with the window.
+
+## Closing the window
+
+When the window is closed (X), or `Window:Unload()` / `DestroyGui` is called, the library stops everything it controls:
+
+- Toggles that are on are set to `false`, so their callbacks receive `false`.
+- Keybinds that are active are released and `OnTrigger(false)` is called.
+- Sliders are set back to `Min`, and inputs are cleared. Their callbacks run with the reset value. Nothing is saved to config.
+- Listeners, render loops and `Window:Loop` are disconnected, and `OnUnload` callbacks run.
+
+Buttons are not changed on close. A button has no value, so the library cannot tell a one-shot action from a start/stop action. Use a Toggle for anything that stays on.
+
+`Window:Unload()` runs the same shutdown and then removes the window. Call it when you want the script to stop completely, for example from a "Unload" button:
+
+```lua
+Section:AddButton({
+  Title = "Unload",
+  Content = "Stop everything and remove the UI",
+  Callback = function() Window:Unload() end,
+})
+```

@@ -1285,6 +1285,40 @@ end
 
 function FlurioreLib:MakeGui(GuiConfig)
 	local GuiConfig = GuiConfig or {}
+	local liveConnections = {}
+	local unloadCallbacks = {}
+	local windowAlive = true
+	local featureToggles = {}
+	local featureKeybinds = {}
+	local featureResets = {}
+	local function trackConnect(signal, handler)
+		local connection = signal:Connect(handler)
+		table.insert(liveConnections, connection)
+		return connection
+	end
+	local function teardownWindow()
+		if not windowAlive then return end
+		windowAlive = false
+		for _, toggle in ipairs(featureToggles) do
+			if toggle.Value then
+				pcall(toggle.Set, toggle, false)
+			end
+		end
+		for _, keybind in ipairs(featureKeybinds) do
+			pcall(keybind.Release, keybind)
+		end
+		for _, reset in ipairs(featureResets) do
+			pcall(reset)
+		end
+		for _, callback in ipairs(unloadCallbacks) do
+			pcall(callback)
+		end
+		for _, connection in ipairs(liveConnections) do
+			connection:Disconnect()
+		end
+		table.clear(liveConnections)
+		table.clear(unloadCallbacks)
+	end
 	-- Key system (off by default). KeySystem = true + KeySettings = {...} blocks here until a key is accepted.
 	if GuiConfig.KeySystem then
 		local source = type(GuiConfig.KeySettings) == "table" and GuiConfig.KeySettings or {}
@@ -2285,7 +2319,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 			realGlass.Sensor = sensor
 			realGlass.DoF = dof
-			realGlass.Conn = RunService.RenderStepped:Connect(updateGlass)
+			realGlass.Conn = trackConnect(RunService.RenderStepped, updateGlass)
 			return true
 		end
 
@@ -2436,6 +2470,7 @@ function FlurioreLib:MakeGui(GuiConfig)
 
 	local oldDestroy = GuiFunc.DestroyGui
 	function GuiFunc:DestroyGui()
+		teardownWindow()
 		GuiFunc:SetRealGlass(false)
 		if blurOwned then
 			releaseSharedBlur()
@@ -3089,6 +3124,7 @@ end
 		CircleClick(Close, Mouse.X, Mouse.Y)
 		if closing then return end
 		closing = true
+		teardownWindow()
 		animateWindow(false)
 		task.delay(0.28, function()
 			GuiFunc:DestroyGui()
@@ -3385,7 +3421,7 @@ end
 			dragStartPos = Vector2.new(btn.AbsolutePosition.X, btn.AbsolutePosition.Y)
 			dragMoved = false
 		end)
-		UserInputService.InputChanged:Connect(function(input)
+		trackConnect(UserInputService.InputChanged, function(input)
 			if input ~= dragInput then return end
 			local current = Vector2.new(input.Position.X, input.Position.Y)
 			local delta = current - dragStartInput
@@ -3397,7 +3433,7 @@ end
 			btn.Position = UDim2.fromOffset(x, y)
 			mobileCfg.Position = btn.Position
 		end)
-		UserInputService.InputEnded:Connect(function(input)
+		trackConnect(UserInputService.InputEnded, function(input)
 			if input == dragInput then dragInput = nil end
 		end)
 		btn.Activated:Connect(function()
@@ -3470,7 +3506,7 @@ end
 		end
 		return GuiFunc:SetSafeArea(inset)
 	end
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	trackConnect(UserInputService.InputBegan, function(input, gameProcessed)
 		if gameProcessed then return end
 		if input.KeyCode == toggleKey then
 			GuiFunc:ToggleUI()
@@ -3649,6 +3685,52 @@ if type(GuiConfig.MobileToggle) == "table" then
 	DropPageLayout.Name = "DropPageLayout"
 	DropPageLayout.Parent = DropdownFolder
 	--// Tabs
+	function GuiFunc:IsAlive()
+		return windowAlive
+	end
+	function GuiFunc:Wait(seconds)
+		local finish = tick() + (tonumber(seconds) or 0)
+		repeat
+			task.wait(math.min(0.05, math.max(0, finish - tick())))
+		until not windowAlive or tick() >= finish
+		return windowAlive
+	end
+	function GuiFunc:Loop(callback, interval)
+		local delay = math.max(0, tonumber(interval) or 0)
+		return task.spawn(function()
+			while windowAlive do
+				local ok, err = pcall(callback)
+				if not ok then
+					warn("[Loop] " .. tostring(err))
+				end
+				if not GuiFunc:Wait(delay) then
+					break
+				end
+			end
+		end)
+	end
+	function GuiFunc:Spawn(callback, ...)
+		local args = table.pack(...)
+		return task.spawn(function()
+			if windowAlive then
+				callback(table.unpack(args, 1, args.n))
+			end
+		end)
+	end
+	function GuiFunc:Connect(signal, handler)
+		return trackConnect(signal, handler)
+	end
+	function GuiFunc:Unload()
+		teardownWindow()
+		GuiFunc:DestroyGui()
+		return true
+	end
+	function GuiFunc:OnUnload(callback)
+		if type(callback) == "function" then
+			table.insert(unloadCallbacks, callback)
+		end
+		return true
+	end
 	local Tabs = GuiFunc
 	local CountTab = 0
 	local tabSelectors = {}
@@ -3684,14 +3766,14 @@ if type(GuiConfig.MobileToggle) == "table" then
 	        end
 	    end
 
-	    UserInputService.InputBegan:Connect(function(input)
+	    trackConnect(UserInputService.InputBegan, function(input)
 	        if not isTouchLike(input.UserInputType) then return end
 	        if not (HirimiGui.Enabled and DropShadowHolder.Visible) then return end
 	        if not insideLayers(input.Position) then return end
 	        swipe = {start = input.Position, time = os.clock(), dir = nil}
 	    end)
 
-	    UserInputService.InputChanged:Connect(function(input)
+	    trackConnect(UserInputService.InputChanged, function(input)
 	        if not swipe or swipe.dir == "blocked" then return end
 	        if HirimiGui:GetAttribute("FlurControlDragging") then
 	            swipe.dir = "blocked"
@@ -3704,7 +3786,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 	        end
 	    end)
 
-	    UserInputService.InputEnded:Connect(function(input)
+	    trackConnect(UserInputService.InputEnded, function(input)
 	        if not isTouchLike(input.UserInputType) then return end
 	        local s0 = swipe
 	        swipe = nil
@@ -4285,6 +4367,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 				ToggleConfig.Default = ToggleConfig.Default or false
 				ToggleConfig.Callback = ToggleConfig.Callback or function() end
 				local ToggleFunc = {Value = ToggleConfig.Default, Options = ToggleConfig.Options, Selecting = ToggleConfig.Selecting}
+				table.insert(featureToggles, ToggleFunc)
 
 				local Toggle = Instance.new("Frame");
 				local UICorner20 = Instance.new("UICorner");
@@ -4477,6 +4560,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 				KeybindConfig.Default = KeybindConfig.Default
 				KeybindConfig.Callback = KeybindConfig.Callback or function() end
 				local KeybindFunc = {Value = KeybindConfig.Default, Listening = false, Mode = "Toggle", State = false}
+				table.insert(featureKeybinds, KeybindFunc)
 local triggerState = false
 local validModes = {Toggle = true, Hold = true, Always = true}
 if not validModes[KeybindConfig.Mode] then KeybindConfig.Mode = "Toggle" end
@@ -4492,6 +4576,13 @@ function KeybindFunc:SetMode(mode)
     KeybindFunc.Mode = mode
     triggerState = false
     if mode == "Always" then fireTrigger(true) end
+    return true
+end
+function KeybindFunc:Release()
+    triggerState = false
+    if KeybindFunc.State then
+        fireTrigger(false)
+    end
     return true
 end
 function KeybindFunc:GetState()
@@ -4571,7 +4662,7 @@ end
 					Chip.Text = "..."
 					Chip.TextColor3 = GuiConfig.Color
 					local conn
-					conn = UserInputService.InputBegan:Connect(function(input, gp)
+					conn = trackConnect(UserInputService.InputBegan, function(input, gp)
 						if gp then return end
 						if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 						if conn then conn:Disconnect() end
@@ -4585,7 +4676,7 @@ end
 					title = KeybindConfig.Title,
 					content = KeybindConfig.Content,
 				})
-								UserInputService.InputBegan:Connect(function(input, gp)
+								trackConnect(UserInputService.InputBegan, function(input, gp)
 					if gp or KeybindFunc.Listening then return end
 					if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
 					local key = KeybindFunc.Value
@@ -4598,7 +4689,7 @@ end
 						fireTrigger(true)
 					end
 				end)
-				UserInputService.InputEnded:Connect(function(input)
+				trackConnect(UserInputService.InputEnded, function(input)
 					if KeybindFunc.Mode ~= "Hold" then return end
 					local key = KeybindFunc.Value
 					if typeof(key) ~= "EnumItem" or input.KeyCode ~= key then return end
@@ -4636,6 +4727,12 @@ end
 				SliderConfig.Default = tonumber(SliderConfig.Default) or SliderConfig.Min
 				SliderConfig.Callback = SliderConfig.Callback or function() end
 				local SliderFunc = {Value = SliderConfig.Min}
+				table.insert(featureResets, function()
+					if SliderFunc.Value ~= SliderConfig.Min then
+						SliderFunc:Set(SliderConfig.Min, true)
+						SliderConfig.Callback(SliderFunc.Value)
+					end
+				end)
 
 				local Slider = Instance.new("Frame")
 				local UICorner15 = Instance.new("UICorner")
@@ -4839,13 +4936,13 @@ end
 				SliderFrame.InputBegan:Connect(beginDrag)
 				SliderDraggable.InputBegan:Connect(beginDrag)
 				SliderCircle.InputBegan:Connect(beginDrag)
-				UserInputService.InputChanged:Connect(function(input)
+				trackConnect(UserInputService.InputChanged, function(input)
 					if not dragging then return end
 					if input.UserInputType == Enum.UserInputType.MouseMovement or (input.UserInputType == Enum.UserInputType.Touch and input == activeTouch) then
 						updateSliderFromX(input.Position.X, true)
 					end
 				end)
-				UserInputService.InputEnded:Connect(function(input)
+				trackConnect(UserInputService.InputEnded, function(input)
 					if dragging and input.UserInputType == Enum.UserInputType.MouseButton1 then
 						dragging = false
 						activeTouch = nil
@@ -4889,6 +4986,11 @@ end
 				InputConfig.Content = InputConfig.Content or "Content"
 				InputConfig.Callback = InputConfig.Callback or function() end
 				local InputFunc = {Value = ""}
+				table.insert(featureResets, function()
+					if InputFunc.Value ~= "" then
+						InputFunc:Set("", true)
+					end
+				end)
 
 				local Input = Instance.new("Frame");
 				local UICorner12 = Instance.new("UICorner");
@@ -5924,10 +6026,10 @@ end
 						applyInput(input)
 					end
 				end)
-				UserInputService.InputChanged:Connect(function(input)
+				trackConnect(UserInputService.InputChanged, function(input)
 					if dragging and isMove(input) then applyInput(input) end
 				end)
-				UserInputService.InputEnded:Connect(function(input)
+				trackConnect(UserInputService.InputEnded, function(input)
 					if dragging and isPress(input) then
 						dragging = nil
 						lockScroll(false)
@@ -6950,7 +7052,7 @@ end
 						return true
 					end
 
-					conn = RunService.RenderStepped:Connect(function(dt)
+					conn = trackConnect(RunService.RenderStepped, function(dt)
 						if not model or not model.Parent then return end
 						local cf, size
 						if model:IsA("Model") then
@@ -7331,10 +7433,10 @@ end
 
 					-- banner pulses while the first request is running
 					task.spawn(function()
-						while alive and loading and Row.Parent do
+						while alive and loading and Row:IsDescendantOf(game) do
 							TweenService:Create(Banner, TweenInfo.new(0.7, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.35}):Play()
 							task.wait(0.7)
-							if not (alive and loading and Row.Parent) then break end
+							if not (alive and loading and Row:IsDescendantOf(game)) then break end
 							TweenService:Create(Banner, TweenInfo.new(0.7, Enum.EasingStyle.Sine), {BackgroundTransparency = 0.1}):Play()
 							task.wait(0.7)
 						end
@@ -7412,9 +7514,9 @@ end
 
 					task.spawn(function()
 						refresh(false)
-						while alive and Row.Parent do
+						while alive and Row:IsDescendantOf(game) do
 							task.wait(nextDelay)
-							if not alive or not Row.Parent then break end
+							if not alive or not Row:IsDescendantOf(game) then break end
 							refresh(false)
 						end
 					end)

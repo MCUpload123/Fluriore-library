@@ -499,6 +499,22 @@ end
 -- Discord widget (replace the invite with your own server)
 SecElements:AddDiscord({ Invite = "https://discord.gg/your-invite", Refresh = 60 })
 
+local autoDemo = false
+SecElements:AddToggle({ Title = "Auto action demo", Flag = "auto_demo", Callback = function(value) autoDemo = value end })
+Window:Loop(function()
+	if autoDemo then
+		print("tick")
+	end
+end, 2)
+
+SecWindow:AddButton({
+	Title = "Unload",
+	Content = "Stop everything and remove the UI",
+	Callback = function()
+		Window:Unload()
+	end,
+})
+
 -- try load previous session if file exists
 pcall(function()
 	Window:LoadConfig("FlurioreConfigs", "demo")

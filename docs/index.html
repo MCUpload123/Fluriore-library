@@ -745,6 +745,18 @@ Section:AddDropdown({Title = "Target", Options = {"Alpha", "Beta"}, Searchable =
 Section:AddColorPicker({Title = "Accent", Alpha = 0.8, Callback = function(color, alpha) end})</code></pre>
           <p class="subtle">Every element also has <code>:Destroy()</code>, <code>:SetTitle(text)</code> and <code>:SetDesc(text)</code>.</p>
 
+          <h3>Stopping code when the window closes</h3>
+          <p>Closing the window stops the library's listeners and loops. Code written with these helpers also stops, and no toggle has to be switched off.</p>
+          <pre data-lang="Luau"><code>Window:Loop(function() print("tick") end, 2)
+Window:Spawn(function(name) print("hello", name) end, "player")
+local connection = Window:Connect(game:GetService("RunService").Heartbeat, function(dt) end)
+Window:OnUnload(function() print("window closed") end)
+
+while Window:Wait(0.5) do
+    print("works until the window closes")
+end</code></pre>
+          <p class="subtle"><code>Window:IsAlive()</code> returns false after the window closes. Plain <code>task.spawn</code> loops and direct <code>:Connect</code> calls in your own code are not tracked, so move them to these helpers if they must stop with the window.</p>
+
           <h3>Tier 3 elements</h3>
           <pre data-lang="Luau"><code>Section:AddTextArea({Title = "Notes", Height = 96, Callback = function(v) end})
 local bar = Section:AddProgress({Title = "Download", Default = 35, Max = 100})
