@@ -3659,7 +3659,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 	UICorner36.Parent = DropdownSelect
 
 	UIStroke14.Color = Color3.fromRGB(255, 255, 255)
-	UIStroke14.Thickness = 1.2
+	UIStroke14.Thickness = 1
 	UIStroke14.Transparency = 0.8
 	UIStroke14.Parent = DropdownSelect
 
@@ -4453,7 +4453,7 @@ if type(GuiConfig.MobileToggle) == "table" then
 				UICorner22.Parent = FeatureFrame2
 
 				UIStroke8.Color = Color3.fromRGB(255, 255, 255)
-				UIStroke8.Thickness = 2
+				UIStroke8.Thickness = 1
 				UIStroke8.Transparency = 0.9
 				UIStroke8.Parent = FeatureFrame2
 
@@ -7310,7 +7310,7 @@ end
 					IconCorner.Parent = Icon
 					local IconRing = Instance.new("UIStroke")
 					IconRing.Color = Theme.Background
-					IconRing.Thickness = 3
+					IconRing.Thickness = 1.5
 					IconRing.Parent = Icon
 
 					local Letter = Instance.new("TextLabel")
